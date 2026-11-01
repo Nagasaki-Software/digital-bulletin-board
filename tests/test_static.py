@@ -122,3 +122,13 @@ def test_holiday_table_hides_dash_only_rows_when_the_day_has_an_entry(tmp_path):
     # 「―」だけの行が減った分の、空き行の数え方も、見えている行で数える
     assert "holidayRows.length" in js and "state.holiday_rows.length" not in js
     assert "export function visibleHolidayRows" in c.get("/js/timeutil.mjs").get_data(as_text=True)
+
+
+def test_accident_tag_and_counter_are_outside_the_frame(tmp_path):
+    html = create_app(tmp_path).test_client().get("/").get_data(as_text=True)
+    head = html[html.index('id="accident-head"'):html.index('id="accident-frame"')]
+    frame = html[html.index('id="accident-frame"'):html.index("<h2>作業ジャンル</h2>")]
+    # ジャンルのタグとページ番号は、資料に重ならないよう、枠の外（すぐ上）に置く
+    assert 'id="accident-tag"' in head and 'id="accident-count"' in head
+    assert 'id="accident-tag"' not in frame and 'id="accident-count"' not in frame
+    assert 'id="accident-bar"' in frame

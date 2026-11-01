@@ -100,10 +100,11 @@ tbody tr:nth-child(even) td { background: var(--row-alt); }
 #accident-msg { padding: 2rem; font-size: 1.75rem; color: var(--paper-muted); text-align: center; }
 #accident-msg[hidden], #accident-tag[hidden], #accident-count[hidden], #accident-bar[hidden],
 #accident-canvas[hidden] { display: none; }
-#accident-tag { position: absolute; left: 1.25rem; top: 1.25rem; padding: .35rem 1.1rem; font-size: 1.5rem;
-                font-weight: 700; color: var(--accent-text); background: var(--accent); border-radius: 1.5rem; }
-#accident-count { position: absolute; right: 1.25rem; bottom: 1.1rem; padding: .1rem .6rem; font-size: 1.5rem;
-                  font-weight: 700; color: var(--paper-muted); background: rgba(255, 255, 255, .85); border-radius: .5rem; }
+/* ジャンルのタグとページ番号は、資料に重ならないよう、枠の外（すぐ上）に出す。どちらも出ないときは高さ0 */
+#accident-head { flex: none; display: flex; justify-content: space-between; align-items: center; }
+#accident-tag { margin-bottom: .35rem; padding: .1rem 1rem; font-size: 1.25rem; font-weight: 700;
+                color: var(--accent-text); background: var(--accent); border-radius: 1.5rem; }
+#accident-count { margin-bottom: .35rem; margin-left: auto; font-size: 1.25rem; font-weight: 700; color: var(--muted); }
 #accident-bar { position: absolute; left: 0; right: 0; bottom: 0; height: .5rem; background: var(--bar-track); }
 #accident-bar-fill { width: 0; height: 100%; background: var(--accent); }
 
