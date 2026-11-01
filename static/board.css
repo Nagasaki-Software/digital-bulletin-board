@@ -31,7 +31,9 @@ button { font-family: inherit; color: inherit; }
 
 #board { height: calc(100vh - 3.6rem); padding: 2rem 2.5rem; display: flex; flex-direction: column; gap: 1.25rem; }
 header { display: flex; justify-content: space-between; align-items: center; height: 5.25rem; flex: none; }
-#date-title { font-size: 3.6rem; font-weight: 700; letter-spacing: .02em; }
+#head-left { display: flex; align-items: baseline; gap: 2rem; }
+#date-title, #clock { font-size: 3.6rem; font-weight: 700; letter-spacing: .02em; }
+#clock { font-variant-numeric: tabular-nums; }
 #date-title .wd { color: var(--sat); }
 #top-right { display: flex; align-items: center; gap: 1rem; }
 #company-name { margin-left: 1.25rem; font-size: 2.75rem; font-weight: 700; }
@@ -99,7 +101,14 @@ tbody tr:nth-child(even) td { background: var(--row-alt); }
 #accident-canvas { max-width: 100%; max-height: 100%; }
 #accident-msg { padding: 2rem; font-size: 1.75rem; color: var(--paper-muted); text-align: center; }
 #accident-msg[hidden], #accident-tag[hidden], #accident-count[hidden], #accident-bar[hidden],
-#accident-canvas[hidden] { display: none; }
+#accident-canvas[hidden], .accident-nav[hidden] { display: none; }
+/* 左右の送りボタン（equipment-inspection の文書表示と同じ ❮ ❯）。資料は常に白地なので、濃い半透明の丸にして、どの資料の上でも見えるようにする */
+.accident-nav { position: absolute; top: 50%; transform: translateY(-50%); z-index: 2; width: 4rem; height: 4rem; padding: 0;
+                display: flex; align-items: center; justify-content: center; font-size: 2rem; line-height: 1; color: #FFFFFF;
+                background: rgba(15, 23, 42, .45); border: 0; border-radius: 50%; cursor: pointer; }
+.accident-nav:hover, .accident-nav:active { background: rgba(15, 23, 42, .7); }
+#accident-prev { left: 1rem; }
+#accident-next { right: 1rem; }
 /* ジャンルのタグとページ番号は、資料に重ならないよう、枠の外（すぐ上）に出す。どちらも出ないときは高さ0 */
 #accident-head { flex: none; display: flex; justify-content: space-between; align-items: center; }
 #accident-tag { margin-bottom: .35rem; padding: .1rem 1rem; font-size: 1.25rem; font-weight: 700;

@@ -9,6 +9,8 @@ const tag = document.getElementById("accident-tag");
 const count = document.getElementById("accident-count");
 const bar = document.getElementById("accident-bar");
 const barFill = document.getElementById("accident-bar-fill");
+const prevBtn = document.getElementById("accident-prev");
+const nextBtn = document.getElementById("accident-next");
 
 let list = [];
 let listKey = null;
@@ -93,6 +95,8 @@ export function setPlaylist(files, emptyMessage) {
     tag.hidden = true;
     count.hidden = true;
     bar.hidden = true;
+    prevBtn.hidden = true;
+    nextBtn.hidden = true;
     msg.hidden = false;
     msg.textContent = emptyMessage;
     return;
@@ -101,6 +105,8 @@ export function setPlaylist(files, emptyMessage) {
   tag.hidden = false;
   count.hidden = false;
   bar.hidden = false;
+  prevBtn.hidden = false;
+  nextBtn.hidden = false;
   msg.hidden = true;
   if (!paused) show();
 }
@@ -206,8 +212,11 @@ function step(dir) {
 const TAP_MOVE = 20;
 const TAP_MS = 600;
 let down = null;
+prevBtn.addEventListener("click", () => step(-1));
+nextBtn.addEventListener("click", () => step(1));
 frame.addEventListener("pointerdown", e => {
   if (!e.isPrimary || e.button !== 0) return;
+  if (e.target.closest(".accident-nav")) return; // ボタンは click で送る。枠のタップ判定と二重に進めない
   down = { x: e.clientX, y: e.clientY, t: Date.now() };
 });
 frame.addEventListener("pointercancel", () => {

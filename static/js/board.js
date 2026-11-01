@@ -7,6 +7,7 @@ import { renderLinkButtons, closeLink, initLinks } from "./links.js";
 import { isEditable, initLock, setLockSeconds, setDefaultEditButton } from "./lock.js";
 import { initStandby, setStandbyConfig } from "./standby.js";
 import { initTheme, setDefaultTheme } from "./theme.js";
+import { initClock } from "./clock.js";
 import { initTelop, updateTelop } from "./telop.js";
 import { initAdminSettings } from "./admin-settings.js";
 
@@ -354,6 +355,7 @@ function guarded(fn) {
 }
 
 initTheme();
+initClock();
 $("btn-add-notice").addEventListener("click", guarded(async () => {
   await save("POST", "/api/notices");
   const box = $("notices");

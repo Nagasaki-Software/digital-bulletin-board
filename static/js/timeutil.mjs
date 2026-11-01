@@ -39,6 +39,11 @@ export function toMinutes(hhmm) {
   return h > 23 || min > 59 ? NaN : h * 60 + min;
 }
 
+// 画面の時計用。Date を "HH:MM"（24時間・ゼロ埋め）にする
+export function formatClock(date) {
+  return String(date.getHours()).padStart(2, "0") + ":" + String(date.getMinutes()).padStart(2, "0");
+}
+
 // 設定欄の入力を "HH:MM"（24時間）にそろえる。"8:00" も可。形式が違えば null
 export function normalizeHHMM(text) {
   const m = typeof text === "string" ? text.trim().match(/^([0-9]{1,2}):([0-9]{2})$/) : null;

@@ -124,6 +124,37 @@ def test_holiday_table_hides_dash_only_rows_when_the_day_has_an_entry(tmp_path):
     assert "export function visibleHolidayRows" in c.get("/js/timeutil.mjs").get_data(as_text=True)
 
 
+def test_clock_is_right_of_the_date_and_started_from_board_js(tmp_path):
+    c = create_app(tmp_path).test_client()
+    html = c.get("/").get_data(as_text=True)
+    head = html[html.index('id="head-left"'):html.index('id="top-right"')]
+    # 日付の右に時刻。日付は描画のたびに書き換わるので、時刻は別の部品に置く
+    assert head.index('id="date-title"') < head.index('id="clock"')
+    assert c.get("/js/clock.js").status_code == 200
+    board = c.get("/js/board.js").get_data(as_text=True)
+    assert 'import { initClock } from "./clock.js"' in board and "initClock();" in board
+    # 時計はこのパソコンの時計を読むだけ。サーバーには問い合わせない
+    clock = c.get("/js/clock.js").get_data(as_text=True)
+    assert "fetch" not in clock and "api(" not in clock
+
+
+def test_accident_frame_has_prev_next_buttons(tmp_path):
+    c = create_app(tmp_path).test_client()
+    html = c.get("/").get_data(as_text=True)
+    frame = html[html.index('id="accident-frame"'):html.index("<h2>作業ジャンル</h2>")]
+    # equipment-inspection の文書表示と同じ ❮ ❯。資料が無いときは出さない（最初は hidden）
+    assert 'id="accident-prev"' in frame and "&#10094;" in frame and 'aria-label="前の資料"' in frame
+    assert 'id="accident-next"' in frame and "&#10095;" in frame and 'aria-label="次の資料"' in frame
+    assert frame.count("accident-nav") == 2 and frame.count("hidden>") >= 2
+    js = c.get("/js/accident.js").get_data(as_text=True)
+    assert 'prevBtn.addEventListener("click", () => step(-1))' in js
+    assert 'nextBtn.addEventListener("click", () => step(1))' in js
+    # ボタンを押したとき、枠のタップ判定（左右半分）でもう一度進めない
+    assert 'e.target.closest(".accident-nav")' in js
+    css = c.get("/board.css").get_data(as_text=True)
+    assert ".accident-nav[hidden]" in css and "#accident-prev { left: 1rem; }" in css and "#accident-next { right: 1rem; }" in css
+
+
 def test_accident_tag_and_counter_are_outside_the_frame(tmp_path):
     html = create_app(tmp_path).test_client().get("/").get_data(as_text=True)
     head = html[html.index('id="accident-head"'):html.index('id="accident-frame"')]

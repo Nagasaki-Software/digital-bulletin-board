@@ -1,6 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { formatRange, contactText, visibleHolidayRows } from "../../static/js/timeutil.mjs";
+import { formatRange, contactText, visibleHolidayRows, formatClock } from "../../static/js/timeutil.mjs";
+
+test("formatClock は 24 時間・ゼロ埋めの HH:MM", () => {
+  assert.equal(formatClock(new Date(2026, 10, 1, 9, 5)), "09:05");
+  assert.equal(formatClock(new Date(2026, 10, 1, 14, 35, 59)), "14:35");
+  assert.equal(formatClock(new Date(2026, 10, 1, 0, 0)), "00:00");
+  assert.equal(formatClock(new Date(2026, 10, 1, 23, 59)), "23:59");
+});
 
 test("formatRange", () => {
   assert.equal(formatRange("9:00", "15:00"), "9:00～15:00");
