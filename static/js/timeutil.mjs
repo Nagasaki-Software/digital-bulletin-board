@@ -68,3 +68,10 @@ export function resolveEditMode(stored, serverDefault) {
   if (stored === "on" || stored === "off") return stored;
   return serverDefault === "on" ? "on" : "off";
 }
+
+// 作業内容の選択肢。工事件名のファイルに作業内容が書いてあれば、その作業内容だけ（ファイルに書いた順）。無ければ登録済みの全部
+export function worksFor(construction, masters) {
+  const mapped = masters.construction_works && masters.construction_works[construction];
+  if (!Array.isArray(mapped) || !mapped.length) return masters.works;
+  return mapped.slice();
+}

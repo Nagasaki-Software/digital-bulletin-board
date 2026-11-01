@@ -6,29 +6,24 @@ import pytest
 
 import masters as mst
 from app import create_app
+from conftest import write_masters
 
-COMPANIES = "name\n1班\n見本電機\n山田\n"
-LEADERS = (
-    "company,leader_name,ext,outside\n"
-    "1班,佐藤,1234,\n1班,鈴木,1235,\n見本電機,田中,,03-0000-0001\n"
-)
-WORKS = "name\n組み立て作業\n配線工事\n"
+COMPANIES = {
+    "1班": [("佐藤", "1234", ""), ("鈴木", "1235", "")],
+    "見本電機": [("田中", "", "03-0000-0001")],
+    "山田": [],
+}
+# どちらの工事件名でも、2つの作業内容をどちらも選べる（作業内容の全体 = 組み立て作業・配線工事）
+CONSTRUCTIONS = {"配管工事": ["組み立て作業", "配線工事"], "電気工事": ["組み立て作業", "配線工事"]}
 GENRES = "name\n溶接作業\n高所作業\n電気配線\nその他\n"
-CONSTRUCTIONS = "name\n配管工事\n電気工事\n"
 
 
 @pytest.fixture
 def env(tmp_path):
     data = tmp_path / "data"
     data.mkdir()
-    for name, text in [
-        ("companies.csv", COMPANIES),
-        ("leaders.csv", LEADERS),
-        ("works.csv", WORKS),
-        ("genres.csv", GENRES),
-        ("constructions.csv", CONSTRUCTIONS),
-    ]:
-        (data / name).write_text(text, encoding="utf-8-sig")
+    write_masters(data, COMPANIES, CONSTRUCTIONS)
+    (data / "genres.csv").write_text(GENRES, encoding="utf-8-sig")
     clock = {"today": date(2026, 11, 2)}
     app = create_app(tmp_path, today_func=lambda: clock["today"])
     return app.test_client(), clock, tmp_path
@@ -255,10 +250,12 @@ def test_documents(env):
 
 def test_broken_csv_gives_warning_not_error(env):
     c, _, base = env
-    (base / "data" / "works.csv").write_bytes("name\n組み立て作業\n".encode("cp932"))
+    for name in ("配管工事", "電気工事"):
+        (base / "data" / "constructions" / f"{name}.csv").write_bytes("作業内容\n組み立て作業\n".encode("cp932"))
     b = board(c)
     assert b["masters"]["works"] == []
-    assert any("works.csv" in w for w in b["warnings"])
+    assert b["masters"]["constructions"] == []
+    assert any("配管工事.csv" in w for w in b["warnings"]) and any("電気工事.csv" in w for w in b["warnings"])
 
 
 def test_rev_changes_on_write_and_on_csv_edit(env):
@@ -268,7 +265,7 @@ def test_rev_changes_on_write_and_on_csv_edit(env):
     r1 = c.get("/api/rev").get_json()["rev"]
     assert r1 != r0
     time.sleep(0.02)
-    (base / "data" / "works.csv").write_text("name\n清掃\n", encoding="utf-8-sig")
+    (base / "data" / "constructions" / "配管工事.csv").write_text("作業内容\n清掃\n", encoding="utf-8-sig")
     assert c.get("/api/rev").get_json()["rev"] != r1
     assert c.get("/api/rev").get_json()["today"] == "2026-11-02"
 
@@ -315,24 +312,26 @@ def test_construction_is_carried_over_next_day(env):
     assert board(c)["schedule"][0]["construction"] == "配管工事"
 
 
-def test_rev_changes_when_constructions_csv_is_edited(env):
+def test_rev_changes_when_the_constructions_folder_is_edited(env):
     c, _, base = env
     r0 = c.get("/api/rev").get_json()["rev"]
     time.sleep(0.02)
-    (base / "data" / "constructions.csv").write_text("name\n足場工事\n", encoding="utf-8-sig")
+    folder = base / "data" / "constructions"
+    (folder / "電気工事.csv").unlink()
+    (folder / "配管工事.csv").rename(folder / "足場工事.csv")
     assert c.get("/api/rev").get_json()["rev"] != r0
     assert board(c)["masters"]["constructions"] == ["足場工事"]
 
 
-def test_missing_constructions_csv_warns_but_board_works(tmp_path):
+def test_missing_constructions_folder_warns_but_board_works(tmp_path):
     data = tmp_path / "data"
     data.mkdir()
-    for name, text in [("companies.csv", COMPANIES), ("leaders.csv", LEADERS), ("works.csv", WORKS), ("genres.csv", GENRES)]:
-        (data / name).write_text(text, encoding="utf-8-sig")
+    write_masters(data, COMPANIES)
+    (data / "genres.csv").write_text(GENRES, encoding="utf-8-sig")
     c = create_app(tmp_path, today_func=lambda: date(2026, 11, 2)).test_client()
     b = board(c)
     assert b["masters"]["constructions"] == []
-    assert any("constructions.csv" in w for w in b["warnings"])
+    assert any("data/constructions" in w for w in b["warnings"])
     rid = add_row(c)
     assert c.patch(f"/api/schedule/{rid}", json={"construction": "配管工事"}).status_code == 400
 
@@ -424,14 +423,8 @@ import json as _json
 def make_client(tmp_path, config):
     data = tmp_path / "data"
     data.mkdir(parents=True, exist_ok=True)
-    for name, text in [
-        ("companies.csv", COMPANIES),
-        ("leaders.csv", LEADERS),
-        ("works.csv", WORKS),
-        ("genres.csv", GENRES),
-        ("constructions.csv", CONSTRUCTIONS),
-    ]:
-        (data / name).write_text(text, encoding="utf-8-sig")
+    write_masters(data, COMPANIES, CONSTRUCTIONS)
+    (data / "genres.csv").write_text(GENRES, encoding="utf-8-sig")
     if config is not None:
         text = config if isinstance(config, str) else _json.dumps(config, ensure_ascii=False)
         (tmp_path / "config.json").write_text(text, encoding="utf-8")

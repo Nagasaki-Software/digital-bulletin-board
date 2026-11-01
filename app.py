@@ -366,6 +366,19 @@ def create_app(base_dir=None, today_func=date.today, port=None, cfg=None, log_re
                 return f"登録リストにありません: {value}"
         return None
 
+    def apply_work_rule(m, fields, row):
+        """作業内容は、その行の工事件名に対応表の登録があるときは、そこから選ぶ（本日の作業予定・休日出勤予定で共通）。
+        合わなければ理由を返す。工事件名を変える要求で、保存済みの作業内容が新しい工事件名に合わないときは、同じ更新で空にする。"""
+        allowed = m["construction_works"].get(fields.get("construction", row["construction"]))
+        if not allowed:
+            return None
+        if "work" in fields:
+            if fields["work"] and fields["work"] not in allowed:
+                return f"この工事件名では選べない作業内容です: {fields['work']}"
+        elif fields.get("construction", row["construction"]) != row["construction"] and row["work"] not in allowed:
+            fields["work"] = ""
+        return None
+
     def week_holidays(m):
         return mst.week_holidays(today_func(), m["custom_holidays"])
 
@@ -503,7 +516,7 @@ def create_app(base_dir=None, today_func=date.today, port=None, cfg=None, log_re
                 "week_holidays": week_holidays(m),
                 "checked_genres": checked,
                 "accident": [{"name": n, "url": "/api/accident/file/" + quote(n)} for n in names],
-                "masters": {k: m[k] for k in ("companies", "leaders", "works", "constructions", "genres", "times")},
+                "masters": {k: m[k] for k in ("companies", "leaders", "works", "constructions", "genres", "times", "construction_works")},
                 "doc_buttons": [{"index": i, "label": b["label"]} for i, b in enumerate(cur.doc_buttons)],
                 "links": {"items": [dict(i) for i in cfg["links"]["items"]], "max_stay_seconds": cfg["links"]["max_stay_seconds"]},
                 "warnings": cur.warnings + m["warnings"],
@@ -569,7 +582,8 @@ def create_app(base_dir=None, today_func=date.today, port=None, cfg=None, log_re
         if "company" in fields and fields["company"] != row["company"] and "leader" not in fields:
             fields["leader"] = ""
         company = fields.get("company", row["company"])
-        error = validate(masters.load_all(), fields, company)
+        m = masters.load_all()
+        error = validate(m, fields, company) or apply_work_rule(m, fields, row)
         if error:
             return bad(error)
         db.update_schedule_row(row_id, fields)
@@ -605,7 +619,8 @@ def create_app(base_dir=None, today_func=date.today, port=None, cfg=None, log_re
     @app.patch("/api/holiday-rows/<int:row_id>")
     def api_patch_holiday(row_id):
         prepare()
-        if db.get_holiday_row(row_id) is None:
+        row = db.get_holiday_row(row_id)
+        if row is None:
             return bad("行が見つかりません", 404)
         body = json_body()
         if body is None:
@@ -622,7 +637,7 @@ def create_app(base_dir=None, today_func=date.today, port=None, cfg=None, log_re
             fields_to_check = {k: v for k, v in fields.items() if k != "date"}
         else:
             fields_to_check = fields
-        error = validate(m, fields_to_check, None)
+        error = validate(m, fields_to_check, None) or apply_work_rule(m, fields, row)
         if error:
             return bad(error)
         db.update_holiday_row(row_id, fields)

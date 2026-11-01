@@ -110,7 +110,7 @@ def test_empty_cells_show_a_bar_only_in_the_holiday_table(tmp_path):
     assert holidays.count("holidayTd(") == 3 and "formatRangeOrDash(r.start_time, r.end_time)" in holidays
     assert "formatRange(r.start_time" not in holidays.replace("formatRangeOrDash(", "")
     assert "td(r.construction" not in holidays and "td(r.person" not in holidays and "td(r.work" not in holidays
-    assert 'import { formatRange, formatRangeOrDash, orDash, contactText, visibleHolidayRows } from "./timeutil.mjs"' in js
+    assert 'import { formatRange, formatRangeOrDash, orDash, contactText, visibleHolidayRows, worksFor } from "./timeutil.mjs"' in js
     css = c.get("/board.css").get_data(as_text=True)
     assert "td.dash { color: var(--muted); }" in css
 

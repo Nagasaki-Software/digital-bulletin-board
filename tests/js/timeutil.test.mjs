@@ -61,3 +61,26 @@ test("visibleHolidayRows: 入力のある行があれば、同じ日の「―」
   assert.deepEqual(visibleHolidayRows([empty(1, "2026-10-31"), empty(2, "2026-10-31")]).map((r) => r.id), [1, 2]);
   assert.deepEqual(visibleHolidayRows([]), []);
 });
+
+import { worksFor } from "../../static/js/timeutil.mjs";
+
+test("worksFor: 工事件名のファイルに書いた作業内容だけを、ファイルの順で返す。無ければ全部", () => {
+  const masters = {
+    works: ["組み立て作業", "配線工事", "清掃", "搬入作業"],
+    construction_works: { 配管工事: ["搬入作業", "組み立て作業"], 電気工事: ["配線工事"] },
+  };
+  assert.deepEqual(worksFor("配管工事", masters), ["搬入作業", "組み立て作業"]);
+  assert.deepEqual(worksFor("電気工事", masters), ["配線工事"]);
+  // 対応の行がない工事件名・空・未定義は、登録されている作業内容をすべて返す
+  const all = ["組み立て作業", "配線工事", "清掃", "搬入作業"];
+  assert.deepEqual(worksFor("塗装工事", masters), all);
+  assert.deepEqual(worksFor("", masters), all);
+  assert.deepEqual(worksFor(undefined, masters), all);
+  assert.deepEqual(worksFor(null, masters), all);
+  // 対応表が無い（古い応答・ファイルなし）ときも全部。Object の標準の名前に引っかからない
+  assert.deepEqual(worksFor("配管工事", { works: all }), all);
+  assert.deepEqual(worksFor("配管工事", { works: all, construction_works: {} }), all);
+  assert.deepEqual(worksFor("constructor", masters), all);
+  assert.deepEqual(worksFor("__proto__", masters), all);
+  assert.deepEqual(worksFor("toString", masters), all);
+});

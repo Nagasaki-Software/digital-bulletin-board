@@ -1,6 +1,6 @@
 import { api } from "./api.js";
 import { pickOption, inputText, confirmBox, alertBox } from "./picker.js";
-import { formatRange, formatRangeOrDash, orDash, contactText, visibleHolidayRows } from "./timeutil.mjs";
+import { formatRange, formatRangeOrDash, orDash, contactText, visibleHolidayRows, worksFor } from "./timeutil.mjs";
 import { setPlaylist, setSeconds, pause as pauseAccident, resume as resumeAccident } from "./accident.js";
 import { renderDocButtons, closeDocuments } from "./documents.js";
 import { renderLinkButtons, closeLink, initLinks } from "./links.js";
@@ -288,7 +288,7 @@ async function editSchedule(row, field) {
     options = m.constructions;
     title = "工事件名";
   } else {
-    options = m.works;
+    options = worksFor(row.construction, m);
     title = "作業内容";
   }
   const v = await pickOption({ title, options, current: row[field] });
@@ -300,7 +300,7 @@ async function editHoliday(row, field) {
   const kinds = {
     person: { title: "氏名・会社名", options: state.masters.companies },
     construction: { title: "工事件名", options: state.masters.constructions },
-    work: { title: "作業内容", options: state.masters.works },
+    work: { title: "作業内容", options: worksFor(row.construction, state.masters) },
   };
   const { title, options } = kinds[field];
   const v = await pickOption({ title, options, current: row[field] });

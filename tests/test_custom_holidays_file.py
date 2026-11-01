@@ -289,8 +289,8 @@ def test_other_master_files_are_not_cached(tmp_path, clock):
     p = shared_file(tmp_path)
     mm = m.Masters(tmp_path / "data", holidays_source=lambda: (p, None))
     before = mm.signature()
-    (tmp_path / "data" / "companies.csv").write_text("name\nA社\n", encoding="utf-8")
-    assert mm.signature() != before  # 会社の一覧などは、いままでどおり毎回見る
+    (tmp_path / "data" / "genres.csv").write_text("name\nA社\n", encoding="utf-8")
+    assert mm.signature() != before  # 作業の種類などは、いままでどおり毎回見る（登録フォルダの一覧は約2秒のキャッシュで、別の試験）
 
 
 def test_changing_the_configured_path_drops_the_cache(tmp_path, clock, stat_calls):

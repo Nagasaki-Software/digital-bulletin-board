@@ -2,6 +2,7 @@ import os
 from datetime import date
 
 import masters as m
+from conftest import write_masters
 
 
 def write(path, text):
@@ -51,11 +52,8 @@ def test_default_times():
 
 
 def test_load_all_and_times_file_created(tmp_path):
-    write(tmp_path / "companies.csv", "name\n1班\n見本電機\n")
-    write(tmp_path / "leaders.csv", "company,leader_name,ext,outside\n1班,佐藤,1234,\n")
-    write(tmp_path / "works.csv", "name\n配線工事\n")
+    write_masters(tmp_path, {"1班": [("佐藤", "1234", "")], "見本電機": []}, {"配管工事": ["配線工事"]})
     write(tmp_path / "genres.csv", "name\n溶接作業\n")
-    write(tmp_path / "constructions.csv", "name\n配管工事\n")
     data = m.Masters(tmp_path).load_all()
     assert data["companies"] == ["1班", "見本電機"]
     assert data["constructions"] == ["配管工事"]
@@ -70,7 +68,7 @@ def test_load_all_and_times_file_created(tmp_path):
 def test_signature_changes_when_a_file_changes(tmp_path):
     mm = m.Masters(tmp_path)
     before = mm.signature()
-    write(tmp_path / "works.csv", "name\n清掃\n")
+    write(tmp_path / "genres.csv", "name\n清掃\n")
     assert mm.signature() != before
 
 
@@ -113,30 +111,29 @@ def test_read_csv_header_with_spaces_reads(tmp_path):
     assert warn is None
 
 
-def test_missing_constructions_csv_gives_empty_list_and_warning(tmp_path):
-    write(tmp_path / "companies.csv", "name\n1班\n")
-    write(tmp_path / "leaders.csv", "company,leader_name,ext,outside\n")
-    write(tmp_path / "works.csv", "name\n配線工事\n")
+def test_missing_constructions_folder_gives_empty_list_and_warning(tmp_path):
+    write_masters(tmp_path, {"1班": []})
     write(tmp_path / "genres.csv", "name\n溶接作業\n")
     data = m.Masters(tmp_path).load_all()
     assert data["constructions"] == []
-    assert data["works"] == ["配線工事"]
-    assert data["warnings"] == ["constructions.csv が見つかりません"]
+    assert data["works"] == []
+    assert data["companies"] == ["1班"]
+    assert data["warnings"] == ["data/constructions フォルダがありません"]
 
 
-def test_signature_changes_when_constructions_csv_is_edited(tmp_path):
-    p = tmp_path / "constructions.csv"
-    write(p, "name\n配管工事\n")
+def test_signature_changes_when_a_construction_file_is_edited(tmp_path):
+    write_masters(tmp_path, constructions={"配管工事": ["清掃"]})
+    p = tmp_path / "constructions" / "配管工事.csv"
     mm = m.Masters(tmp_path)
     before = mm.signature()
-    write(p, "name\n配管工事\n電気工事\n")
+    write(p, "作業内容\n清掃\n配線工事\n")
     later = p.stat().st_mtime + 10
     os.utime(p, (later, later))
     assert mm.signature() != before
 
 
 def test_signature_changes_when_existing_file_is_modified(tmp_path):
-    p = tmp_path / "works.csv"
+    p = tmp_path / "genres.csv"
     write(p, "name\n清掃\n")
     mm = m.Masters(tmp_path)
     before = mm.signature()
