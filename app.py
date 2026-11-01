@@ -25,7 +25,7 @@ import telop
 from board_db import HOLIDAY_FIELDS, SCHEDULE_FIELDS, BoardDB
 from config import DEFAULTS, clean_admin_settings, load_config, save_admin_settings
 
-APP_VERSION = "0.2.0"  # 画面と /api/health に出す。版数の出どころはここだけ
+APP_VERSION = "0.2.1"  # 画面と /api/health に出す。版数の出どころはここだけ
 APP_ID = "digital-bulletin-board"  # /api/health に出す。起動.bat が、隣のポートの別アプリと見分けるのに使う
 PORT_FILE = "server_port.txt"  # 実際に使っているポート番号。起動.bat が読む
 ADMIN_KEY_FILE = "admin_key.txt"
@@ -490,7 +490,7 @@ def create_app(base_dir=None, today_func=date.today, port=None, cfg=None, log_re
         for r in db.list_holiday_rows(monday.isoformat(), sunday.isoformat()):
             day = date.fromisoformat(r["date"])
             info = mst.holiday_info(day, m["custom_holidays"])
-            r["label"] = mst.date_label(day, info["name"])
+            r["label"] = mst.date_label(day)
             r["kind"] = info["kind"]
             holiday_rows.append(r)
 

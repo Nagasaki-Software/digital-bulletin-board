@@ -167,7 +167,7 @@ def test_week_range_is_monday_to_sunday():
 
 def test_week_holidays_labels():
     result = m.week_holidays(date(2026, 11, 4), {})
-    assert [w["label"] for w in result] == ["11/3(火・文化の日)", "11/7(土)", "11/8(日)"]
+    assert [w["label"] for w in result] == ["11/3(火)", "11/7(土)", "11/8(日)"]
     assert [w["kind"] for w in result] == ["holiday", "saturday", "holiday"]
     assert result[0]["date"] == "2026-11-03"
 

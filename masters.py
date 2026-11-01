@@ -277,9 +277,8 @@ def holiday_info(d, custom):
     return {"kind": "", "name": ""}
 
 
-def date_label(d, name):
-    w = WEEKDAYS[d.weekday()]
-    return f"{d.month}/{d.day}({w}・{name})" if name else f"{d.month}/{d.day}({w})"
+def date_label(d):
+    return f"{d.month}/{d.day}({WEEKDAYS[d.weekday()]})"
 
 
 def day_title(d):
@@ -298,5 +297,5 @@ def week_holidays(today, custom):
         d = monday + timedelta(days=i)
         info = holiday_info(d, custom)
         if info["kind"]:
-            out.append({"date": d.isoformat(), "label": date_label(d, info["name"]), "kind": info["kind"]})
+            out.append({"date": d.isoformat(), "label": date_label(d), "kind": info["kind"]})
     return out

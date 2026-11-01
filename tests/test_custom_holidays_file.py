@@ -140,7 +140,7 @@ def test_config_values_accepted(tmp_path):
 def test_default_location_still_works(tmp_path):
     c = make(tmp_path)
     (tmp_path / "data" / "custom_holidays.csv").write_bytes(CRLF)
-    assert "11/5(木・創立記念日)" in labels(c)
+    assert "11/5(木)" in labels(c)
     assert c.get("/api/admin-settings").get_json()["custom_holidays_file"] == "data/custom_holidays.csv"
 
 
@@ -148,15 +148,15 @@ def test_shared_absolute_path_is_used_for_week_holidays_and_edits_refresh_screen
     p = shared_file(tmp_path)
     c = make(tmp_path / "app", {"custom_holidays_file": str(p)})
     b = c.get("/api/board").get_json()
-    assert [w["label"] for w in b["week_holidays"]] == ["11/3(火・文化の日)", "11/5(木・創立記念日)", "11/6(金・工場メンテ)", "11/7(土)", "11/8(日)"]
+    assert [w["label"] for w in b["week_holidays"]] == ["11/3(火)", "11/5(木)", "11/6(金)", "11/7(土)", "11/8(日)"]
     assert mine(b["warnings"]) == []
     assert c.post("/api/holiday-rows", json={"date": "2026-11-05"}).status_code == 200  # 共有ファイルの休日を選べる
     r1 = rev(c)
     p.write_bytes(CRLF.replace("創立記念日".encode(), "創立記念".encode()))  # Excel で直した
     assert rev(c) != r1
-    assert "11/5(木・創立記念)" in labels(c)
+    assert "11/5(木)" in labels(c)
     rows = [r for r in c.get("/api/board").get_json()["holiday_rows"] if r["date"] == "2026-11-05"]
-    assert [r["label"] for r in rows] == ["11/5(木・創立記念)"] * 2  # 最初から作られた行と、上で足した行
+    assert [r["label"] for r in rows] == ["11/5(木)"] * 2  # 最初から作られた行と、上で足した行
 
 
 def test_missing_configured_file_shows_one_banner_warning_and_falls_back_to_jpholiday(tmp_path):
@@ -165,7 +165,7 @@ def test_missing_configured_file_shows_one_banner_warning_and_falls_back_to_jpho
     for _ in range(3):
         b = c.get("/api/board").get_json()
         assert mine(b["warnings"]) == [f"会社の休日ファイル（{missing}）が見つかりません"]
-    assert labels(c) == ["11/3(火・文化の日)", "11/7(土)", "11/8(日)"]
+    assert labels(c) == ["11/3(火)", "11/7(土)", "11/8(日)"]
     assert c.get("/api/rev").status_code == 200
     assert not (tmp_path / "gone").exists()
 
@@ -184,19 +184,19 @@ def test_the_app_never_writes_the_holiday_file(tmp_path):
 def test_post_changes_file_without_restart(tmp_path):
     p = shared_file(tmp_path)
     c = make(tmp_path / "app")
-    assert "11/5(木・創立記念日)" not in labels(c)
+    assert "11/5(木)" not in labels(c)
     r0 = rev(c)
     res = post(c, custom_holidays_file=f"  {p}  ")
     assert res.status_code == 200 and res.get_json() == {"ok": True}
     assert rev(c) != r0
-    assert "11/5(木・創立記念日)" in labels(c)
+    assert "11/5(木)" in labels(c)
     assert c.get("/api/admin-settings").get_json()["custom_holidays_file"] == str(p)
     saved = json.loads((tmp_path / "app" / "config.json").read_text(encoding="utf-8"))
     assert saved["custom_holidays_file"] == str(p)
     # 元の場所（data/）に戻す: 空欄 = 既定
     assert post(c, custom_holidays_file="").status_code == 200
     assert c.get("/api/admin-settings").get_json()["custom_holidays_file"] == "data/custom_holidays.csv"
-    assert "11/5(木・創立記念日)" not in labels(c)
+    assert "11/5(木)" not in labels(c)
 
 
 def test_post_relative_path_is_from_the_app_folder_and_missing_file_warns_on_screen(tmp_path):
@@ -206,7 +206,7 @@ def test_post_relative_path_is_from_the_app_folder_and_missing_file_warns_on_scr
     assert mine(b["warnings"]) == ["会社の休日ファイル（shared/休日.csv）が見つかりません"]
     (tmp_path / "shared").mkdir()
     (tmp_path / "shared" / "休日.csv").write_bytes(CRLF)
-    assert "11/5(木・創立記念日)" in labels(c)
+    assert "11/5(木)" in labels(c)
     assert mine(c.get("/api/board").get_json()["warnings"]) == []
 
 

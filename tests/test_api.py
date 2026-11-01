@@ -181,9 +181,9 @@ def test_holiday_rows_only_on_this_weeks_holidays(env):
     assert c.patch(f"/api/holiday-rows/{rid}", json={"date": "2026-11-04"}).status_code == 400
     assert c.patch(f"/api/holiday-rows/{rid}", json={"date": "2026-11-03"}).status_code == 200
     b = board(c)
-    assert [w["label"] for w in b["week_holidays"]] == ["11/3(火・文化の日)", "11/7(土)", "11/8(日)"]
+    assert [w["label"] for w in b["week_holidays"]] == ["11/3(火)", "11/7(土)", "11/8(日)"]
     row = holiday_row(c, rid)
-    assert (row["label"], row["kind"], row["person"]) == ("11/3(火・文化の日)", "holiday", "山田")
+    assert (row["label"], row["kind"], row["person"]) == ("11/3(火)", "holiday", "山田")
 
 
 def test_holiday_rows_sorted_by_date(env):
@@ -209,7 +209,7 @@ def test_company_holiday_can_be_chosen(env):
     c, _, base = env
     (base / "data" / "custom_holidays.csv").write_text("date,name\n2026-11-05,創立記念日\n", encoding="utf-8-sig")
     labels = [w["label"] for w in board(c)["week_holidays"]]
-    assert "11/5(木・創立記念日)" in labels
+    assert "11/5(木)" in labels
     assert c.post("/api/holiday-rows", json={"date": "2026-11-05"}).status_code == 200
 
 
