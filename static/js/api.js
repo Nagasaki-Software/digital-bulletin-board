@@ -8,12 +8,17 @@ function timeoutSignal(ms) {
   return c.signal;
 }
 
-export async function api(method, url, body, timeoutMs = TIMEOUT_MS) {
+// 管理者キーは HTTP の見出しに載せるので、半角の英数字・記号だけ（それ以外だと fetch が例外になる）
+export function isAsciiKey(key) {
+  return typeof key === "string" && /^[ -~]*$/.test(key);
+}
+
+export async function api(method, url, body, timeoutMs = TIMEOUT_MS, extraHeaders = {}) {
   let res;
   try {
     res = await fetch(url, {
       method,
-      headers: body !== undefined ? { "Content-Type": "application/json" } : {},
+      headers: { ...(body !== undefined ? { "Content-Type": "application/json" } : {}), ...extraHeaders },
       body: body !== undefined ? JSON.stringify(body) : undefined,
       signal: timeoutSignal(timeoutMs),
     });
@@ -26,7 +31,9 @@ export async function api(method, url, body, timeoutMs = TIMEOUT_MS) {
     try {
       message = (await res.json()).error || message;
     } catch (_) {}
-    throw new Error(message);
+    const err = new Error(message);
+    err.status = res.status;
+    throw err;
   }
   return res.json();
 }

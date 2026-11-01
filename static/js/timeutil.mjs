@@ -19,7 +19,23 @@ export function toMinutes(hhmm) {
   return h > 23 || min > 59 ? NaN : h * 60 + min;
 }
 
-// start〜end が日付をまたぐとき（18:00〜07:30）も正しく判定する
+// 設定欄の入力を "HH:MM"（24時間）にそろえる。"8:00" も可。形式が違えば null
+export function normalizeHHMM(text) {
+  const m = typeof text === "string" ? text.trim().match(/^([0-9]{1,2}):([0-9]{2})$/) : null;
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  return h > 23 || min > 59 ? null : String(h).padStart(2, "0") + ":" + m[2];
+}
+
+// 設定欄の秒数（1〜86400 の数）。範囲外・数でないときは null
+export function secondsValue(text) {
+  const raw = typeof text === "string" ? text.trim() : "";
+  const n = Number(raw);
+  return raw !== "" && Number.isFinite(n) && n >= 1 && n <= 86400 ? n : null;
+}
+
+// start〜end が日付をまたぐとき（18:00〜08:00）も正しく判定する
 export function isStandbyTime(nowMinutes, start, end) {
   const s = toMinutes(start);
   const e = toMinutes(end);

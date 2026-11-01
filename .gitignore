@@ -11,3 +11,7 @@ data/board.db-wal
 data/board.db-shm
 accident_cases/
 documents/
+logs/
+backups/
+server_port.txt
+admin_key.txt

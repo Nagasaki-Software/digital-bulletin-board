@@ -110,7 +110,7 @@ def test_save_keeps_unrelated_keys_and_writes_atomically(tmp_path):
     assert saved["documents"]["buttons"][0] == {"label": "手順書", "folder": "D:\\文書"}
     assert saved["telop"] == {"speed": 250, "folder": "D:/お知らせ", "enabled": False}
     assert "手順書" in raw.decode("utf-8")  # ensure_ascii=False
-    assert [f.name for f in tmp_path.iterdir()] == ["config.json"]  # 一時ファイルが残らない
+    assert [f.name for f in tmp_path.iterdir() if f.name != "backups"] == ["config.json"]  # 一時ファイルが残らない（backups は自動バックアップ）
 
 
 def test_save_starts_from_empty_when_file_is_missing(tmp_path):
@@ -186,7 +186,7 @@ def test_save_failure_leaves_original_and_no_temp(tmp_path, monkeypatch):
     with pytest.raises(OSError):
         save_admin_settings(p, clean_admin_settings(GOOD))
     assert p.read_bytes() == before
-    assert [f.name for f in tmp_path.iterdir()] == ["config.json"]
+    assert [f.name for f in tmp_path.iterdir() if f.name != "backups"] == ["config.json"]  # 置き換え前に作った控えは残る
 
 
 def test_blank_row_messages_name_the_row():

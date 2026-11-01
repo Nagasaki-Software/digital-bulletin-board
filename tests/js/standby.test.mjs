@@ -46,3 +46,42 @@ test("malformed or non-string times never standby and never throw", () => {
   assert.ok(Number.isNaN(toMinutes("garbage")));
   assert.ok(Number.isNaN(toMinutes(730)));
 });
+
+test("default sleep window is 18:00 - 08:00", () => {
+  assert.equal(isStandbyTime(at(7, 59), "18:00", "08:00"), true);
+  assert.equal(isStandbyTime(at(8, 0), "18:00", "08:00"), false);
+  assert.equal(isStandbyTime(at(7, 30), "18:00", "08:00"), true); // 旧既定（07:30）ではここは通常表示だった
+  assert.equal(isStandbyTime(at(17, 59), "18:00", "08:00"), false);
+  assert.equal(isStandbyTime(at(18, 0), "18:00", "08:00"), true);
+  assert.equal(isStandbyTime(at(8, 0), "18:00", "8:00"), false);
+});
+
+test("standby.js default config matches the server default (08:00)", async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("../../static/js/standby.js", import.meta.url), "utf8");
+  assert.match(src, /let cfg = \{ start: "18:00", end: "08:00", wake_idle_seconds: 300 \}/);
+});
+
+import { normalizeHHMM, secondsValue } from "../../static/js/timeutil.mjs";
+
+test("normalizeHHMM: 24-hour HH:MM, also from text fallback input", () => {
+  assert.equal(normalizeHHMM("18:00"), "18:00");
+  assert.equal(normalizeHHMM("8:00"), "08:00");
+  assert.equal(normalizeHHMM(" 8:05 "), "08:05");
+  assert.equal(normalizeHHMM("00:00"), "00:00");
+  assert.equal(normalizeHHMM("23:59"), "23:59");
+  for (const bad of ["", "24:00", "12:60", "12:5", "8", "abc", "08:00:00", "８:００", null, undefined, 800, {}]) {
+    assert.equal(normalizeHHMM(bad), null, String(bad));
+  }
+});
+
+test("secondsValue: numbers from 1 to 86400 only", () => {
+  assert.equal(secondsValue("300"), 300);
+  assert.equal(secondsValue(" 15 "), 15);
+  assert.equal(secondsValue("1"), 1);
+  assert.equal(secondsValue("86400"), 86400);
+  assert.equal(secondsValue("7.5"), 7.5);
+  for (const bad of ["", "  ", "0", "0.5", "86401", "-5", "abc", "1e9", "NaN", "Infinity", null, undefined]) {
+    assert.equal(secondsValue(bad), null, String(bad));
+  }
+});

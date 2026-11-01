@@ -1,6 +1,7 @@
 import { isStandbyTime } from "./timeutil.mjs";
+import { isLinkOpen } from "./links.js";
 
-let cfg = { start: "18:00", end: "07:30", wake_idle_seconds: 300 };
+let cfg = { start: "18:00", end: "08:00", wake_idle_seconds: 300 };
 let lastActivity = -Infinity;
 let shown = false;
 let configured = false;
@@ -8,7 +9,7 @@ let onShow = () => {};
 let onHide = () => {};
 const $ = id => document.getElementById(id);
 
-// サーバーから本物の設定が届くまでは待機画面を出さない（読み込み直後のちらつき防止）
+// サーバーから本物の設定が届くまではスリープ画面を出さない（読み込み直後のちらつき防止）
 export function setStandbyConfig(c) {
   if (!c || typeof c.start !== "string" || typeof c.end !== "string") return;
   const idle = Number(c.wake_idle_seconds);
@@ -29,7 +30,7 @@ function showStandby() {
   onShow();
 }
 
-// 先に待機画面を消してから onHide を呼ぶ（災害事例の再開は掲示板が見えてから）
+// 先にスリープ画面を消してから onHide を呼ぶ（災害事例の再開は掲示板が見えてから）
 function hideStandby() {
   shown = false;
   $("standby").hidden = true;
@@ -44,6 +45,11 @@ function tick() {
   if (shown) {
     if (!inTime) hideStandby();
     else updateClock();
+    return;
+  }
+  if (isLinkOpen()) {
+    // リンク先の中の操作は、この画面には届かない。開いている間は操作中と見なし、閉じてから「操作なし」を数え直す
+    lastActivity = Date.now();
     return;
   }
   if (inTime && Date.now() - lastActivity > cfg.wake_idle_seconds * 1000) showStandby();

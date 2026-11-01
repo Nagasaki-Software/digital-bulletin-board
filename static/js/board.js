@@ -3,6 +3,7 @@ import { pickOption, inputText, confirmBox, alertBox } from "./picker.js";
 import { formatRange, contactText } from "./timeutil.mjs";
 import { setPlaylist, setSeconds, pause as pauseAccident, resume as resumeAccident } from "./accident.js";
 import { renderDocButtons, closeDocuments } from "./documents.js";
+import { renderLinkButtons, closeLink, initLinks } from "./links.js";
 import { isEditable, initLock, setLockSeconds, setDefaultEditButton } from "./lock.js";
 import { initStandby, setStandbyConfig } from "./standby.js";
 import { initTheme, setDefaultTheme } from "./theme.js";
@@ -185,7 +186,7 @@ function renderGenres() {
   });
 }
 
-// 災害事例・文書ボタン・編集ロック・待機画面の更新（Task 7〜9 で中身を足す）
+// 災害事例・文書ボタン・編集ロック・スリープ画面の更新。設定が変わったときも、画面を取り直すたびにここで新しい値が渡る
 function renderParts() {
   setSeconds(state.settings.accident_seconds);
   setPlaylist(
@@ -193,6 +194,7 @@ function renderParts() {
     state.checked_genres.length ? "該当する災害事例がありません" : "作業ジャンルを選ぶと災害事例が表示されます"
   );
   renderDocButtons(state.doc_buttons, state.settings.documents_idle_seconds);
+  renderLinkButtons(state.links);
   setLockSeconds(state.settings.edit_lock_seconds);
   setStandbyConfig(state.settings.standby);
   updateTelop(state.settings.telop);
@@ -362,9 +364,18 @@ initAdminSettings({
     } catch (_) {}
   },
 });
-// 待機に入るとき: 文書の閲覧と設定メニューを閉じ、災害事例を止める
+// リンク先を開いている間は災害事例を止める（文書の閲覧と同時には開かない）。閉じて掲示板が見えてから再開する
+initLinks({
+  onOpen: () => {
+    closeDocuments();
+    pauseAccident();
+  },
+  onClose: resumeAccident,
+});
+// スリープに入るとき: 文書の閲覧・リンク先と設定メニューを閉じ、災害事例を止める
 initStandby(() => {
   closeDocuments();
+  closeLink(false); // 再開はしない（スリープが終わるときに再開される）
   $("settings").hidden = true;
   pauseAccident();
 }, resumeAccident);

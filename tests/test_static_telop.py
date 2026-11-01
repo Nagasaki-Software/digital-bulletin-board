@@ -16,7 +16,7 @@ def test_html_has_telop_strip_after_the_main_columns(tmp_path):
     strip = html[html.index('id="telop"'):html.index('id="picker"')]
     assert " hidden" not in strip  # 常に表示（表示・非表示の設定は無い）
     assert "innerHTML" not in strip
-    # 画面の下に固定され、重ね表示（設定 z-index 10・文書 20・待機 30）より下にある。本体はその分だけ低くする
+    # 画面の下に固定され、重ね表示（設定 z-index 10・文書 20・スリープ 30）より下にある。本体はその分だけ低くする
     css = get(tmp_path, "/board.css").get_data(as_text=True)
     telop_rule = css[css.index("#telop {"):css.index("#telop {") + 300]
     assert "position: fixed" in telop_rule and "bottom: 0" in telop_rule and "height: 3.6rem" in telop_rule

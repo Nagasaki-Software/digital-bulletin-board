@@ -71,6 +71,7 @@
           </table>
         </div>
         <button id="btn-add-holiday" class="add-btn edit-only" type="button">＋ 行を追加</button>
+        <div id="link-buttons" hidden></div>
         <div id="doc-buttons"></div>
       </section>
     </main>
@@ -104,6 +105,21 @@
     </div>
   </div>
 
+  <div id="link-view" class="overlay" hidden>
+    <div class="docs-head">
+      <div id="link-title"></div>
+      <div id="link-warn" class="link-warn" hidden>
+        <span>あと30秒で戻ります</span>
+        <button id="link-continue" class="opt" type="button">続ける</button>
+      </div>
+      <div class="docs-head-actions">
+        <a id="link-newtab" class="link-newtab" target="_blank" rel="noopener noreferrer">開けないときは別のタブで開く</a>
+        <button id="link-back" class="opt" type="button">掲示板へ戻る</button>
+      </div>
+    </div>
+    <iframe id="link-frame" title="リンク先" referrerpolicy="no-referrer" sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads"></iframe>
+  </div>
+
   <div id="settings" class="overlay" hidden>
     <div class="panel settings-panel">
       <h3>設定</h3>
@@ -117,6 +133,10 @@
         <label class="radio"><input type="radio" name="theme" value="dark"> 暗い</label>
 
         <h4 class="group-title">全端末共通（サーバーに保存。保存すると全部の画面に反映）</h4>
+        <div id="admin-key-row" class="field-line" hidden>
+          <label for="admin-key">管理者キー</label>
+          <input id="admin-key" class="f-folder" type="password" autocomplete="off" placeholder="別のPCから設定を変えるときだけ入力">
+        </div>
         <div class="field-line">
           <label for="company-input">会社名（右上に表示）</label>
           <input id="company-input" type="text" maxlength="100" placeholder="例: ○○工業(株)">
@@ -130,6 +150,37 @@
           <label for="telop-speed">テロップ速度</label>
           <input id="telop-speed" type="number" min="20" max="500" step="1" inputmode="numeric">
           <span>px/秒（20〜500）</span>
+        </div>
+        <div class="field-line">
+          <label for="holidays-file">会社の休日ファイル</label>
+          <input id="holidays-file" class="f-folder" type="text" maxlength="260" placeholder="data/custom_holidays.csv">
+        </div>
+        <p class="hint">equipment-inspection と共通にするには、そちらの data/custom_holidays.csv のパスを入れます（形式は同じ）</p>
+        <p class="setting-title">スリープ・時間</p>
+        <div class="field-line">
+          <label for="sleep-start">スリープ開始</label>
+          <input id="sleep-start" class="f-time" type="time" step="60">
+        </div>
+        <div class="field-line">
+          <label for="sleep-end">スリープ終了</label>
+          <input id="sleep-end" class="f-time" type="time" step="60">
+        </div>
+        <p class="hint">開始と終了を同じ時刻にすると、スリープしません。</p>
+        <div class="field-line">
+          <label for="sleep-wake-idle">操作なしでスリープに戻る（秒）</label>
+          <input id="sleep-wake-idle" type="number" min="1" max="86400" step="1" inputmode="numeric">
+        </div>
+        <div class="field-line">
+          <label for="accident-seconds">災害事例の表示秒数</label>
+          <input id="accident-seconds" type="number" min="1" max="86400" step="1" inputmode="numeric">
+        </div>
+        <div class="field-line">
+          <label for="doc-idle-seconds">文書の操作なし戻り（秒）</label>
+          <input id="doc-idle-seconds" type="number" min="1" max="86400" step="1" inputmode="numeric">
+        </div>
+        <div class="field-line">
+          <label for="edit-lock-seconds">編集の自動終了（秒）</label>
+          <input id="edit-lock-seconds" type="number" min="1" max="86400" step="1" inputmode="numeric">
         </div>
         <p class="setting-title">文書掲示</p>
         <div class="field-line">
@@ -157,6 +208,21 @@
           <input type="text" id="doc-folder-4" class="f-folder" maxlength="260" placeholder="フォルダパス">
         </div>
         <p class="hint">フォルダは、アプリのフォルダからの場所（例 documents/doc1）か、D:/文書 や //server/share/文書 のようにすべて書いて指定します。無いフォルダは自動で作ります。ボタン数より後ろの行（灰色）は使われません。</p>
+        <p class="setting-title">リンクボタン（最大2つ）</p>
+        <div class="doc-row">
+          <input type="text" id="link-label-0" class="f-label" maxlength="100" placeholder="例: 設備点検システム">
+          <input type="text" id="link-url-0" class="f-folder" maxlength="500" placeholder="例: http://サーバーPC名:5000/">
+        </div>
+        <div class="doc-row">
+          <input type="text" id="link-label-1" class="f-label" maxlength="100" placeholder="例: 設備点検システム">
+          <input type="text" id="link-url-1" class="f-folder" maxlength="500" placeholder="例: http://サーバーPC名:5000/">
+        </div>
+        <div class="field-line">
+          <label for="link-stay">最大滞在（秒）</label>
+          <input id="link-stay" type="number" min="60" max="3600" step="1" inputmode="numeric">
+          <span>60〜3600。この時間がたつと自動で掲示板に戻ります</span>
+        </div>
+        <p class="hint">設備点検システム（equipment-inspection）の画面を開くには、サーバーPCの名前かIPアドレスで書きます（例: http://サーバーPC名:5000/）。設備点検システム側は、他のPCから開けるように設定しておく必要があります</p>
         <div id="settings-msg" class="status-line" role="alert" hidden></div>
         <div class="save-line">
           <button id="settings-save" class="opt save-btn" type="button">保存して適用</button>

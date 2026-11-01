@@ -1,0 +1,23 @@
+{
+  "note": "Python（tests/test_links.py）と JavaScript（tests/js/links.test.mjs）が同じ表を使う。URL に埋め込んだ ユーザー名:パスワード@ は使えない",
+  "ok": [
+    "http://host/path?q=a@b",
+    "http://host/user@host",
+    "http://host/#frag@x",
+    "https://example.com:8443/a@b/c",
+    "http://[::1]:5000/x@y"
+  ],
+  "ng": [
+    "http://user:pass@host/",
+    "http://user@host/",
+    "https://admin:secret@192.168.0.5:5000/x",
+    "http://@host/",
+    "http://:@host/",
+    "http://user:@host/",
+    "http://good.example\\@evil.example/",
+    "http://a@b@c/",
+    "http://host%40x@evil/",
+    "HTTP://USER:PW@EXAMPLE.COM/",
+    "http://user:pass@[::1]:5000/"
+  ]
+}

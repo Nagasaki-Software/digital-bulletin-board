@@ -17,6 +17,7 @@ let fileIdx = 0;
 let pageNum = 1;
 let doc = null;
 let timer = null;
+let advancing = false; // いまのスライドが「次へ進むまでの秒数」を数えている最中か
 let paused = false;
 let token = 0;
 let renderTask = null;
@@ -24,12 +25,21 @@ let loadTask = null;
 const LOAD_TIMEOUT_MS = 20000;
 const FAIL_NOTICE = "この資料は表示できません";
 
+// 設定の表示秒数が変わったときだけ、表示中のスライドの数え直しをする（長い秒数から短くしても古い秒数を待たない）。同じ値なら何もしない
 export function setSeconds(s) {
-  seconds = s;
+  const n = Number(s);
+  if (!(n > 0) || n === seconds) return;
+  seconds = n;
+  if (advancing && !paused) {
+    clearTimeout(timer);
+    restartBar();
+    timer = setTimeout(() => step(1), seconds * 1000);
+  }
 }
 
 export function pause() {
   paused = true;
+  advancing = false;
   clearTimeout(timer);
   barFill.style.transition = "none";
   barFill.style.width = "0";
@@ -76,6 +86,7 @@ export function setPlaylist(files, emptyMessage) {
   dropDoc();
   cancelLoad();
   clearTimeout(timer);
+  advancing = false;
   token++;
   if (!files.length) {
     canvas.hidden = true;
@@ -96,6 +107,7 @@ export function setPlaylist(files, emptyMessage) {
 
 async function show() {
   clearTimeout(timer);
+  advancing = false;
   const my = ++token;
   cancelLoad();
   if (!frame.clientWidth || !frame.clientHeight) {
@@ -149,6 +161,7 @@ async function show() {
   }
   if (my === token && !paused) {
     restartBar();
+    advancing = true;
     timer = setTimeout(() => step(1), seconds * 1000);
   }
 }

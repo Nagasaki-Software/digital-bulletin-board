@@ -469,7 +469,7 @@ def test_wrong_config_does_not_break_startup_or_board(tmp_path, config, key):
     assert s["accident_seconds"] == 15 and s["edit_lock_seconds"] == 60
     assert s["documents_idle_seconds"] == 120
     assert s["default_theme"] == "light" and s["default_edit_button"] == "off"
-    assert s["standby"] == {"start": "18:00", "end": "07:30", "wake_idle_seconds": 300}
+    assert s["standby"] == {"start": "18:00", "end": "08:00", "wake_idle_seconds": 300}
     assert b["company_name"] == "サンプル工業(株)"
     assert b["doc_buttons"] == DEFAULT_DOC_BUTTONS
     assert c.get("/api/rev").status_code == 200

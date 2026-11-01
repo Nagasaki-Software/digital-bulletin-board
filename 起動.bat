@@ -19,9 +19,15 @@ exit /b 0
 
 :openbrowser
 rem サーバーが応答するまで最大60秒（1秒ごと）待つ。応答しなくてもブラウザは開く
+rem 開く先のポートは server_port.txt から毎回読む（ポートが使用中だと別の番号で起動するため）。ファイルが無いときは5100
+rem /api/health の返事に digital-bulletin-board が入っていたら、このアプリが起動したと判断する
 set /a TRIES=0
 :waitloop
-curl.exe -s -o nul http://localhost:5100/api/rev
+set "PORT=5100"
+if exist "server_port.txt" set /p PORT=<"server_port.txt"
+echo %PORT%|findstr /r "^[0-9][0-9]*$" >nul
+if errorlevel 1 set "PORT=5100"
+curl.exe -s --max-time 2 http://localhost:%PORT%/api/health | findstr /c:"digital-bulletin-board" >nul
 if not errorlevel 1 goto :ready
 set /a TRIES+=1
 if %TRIES% geq 60 goto :ready
@@ -32,9 +38,9 @@ goto :waitloop
 set "EDGE=%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"
 if not exist "%EDGE%" set "EDGE=%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"
 if not exist "%EDGE%" goto :fallback
-start "" "%EDGE%" http://localhost:5100
+start "" "%EDGE%" http://localhost:%PORT%
 exit /b 0
 
 :fallback
-start "" http://localhost:5100
+start "" http://localhost:%PORT%
 exit /b 0

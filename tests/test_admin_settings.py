@@ -22,6 +22,15 @@ def make(tmp_path, config=None):
     return create_app(tmp_path, today_func=lambda: date(2026, 11, 2)).test_client()
 
 
+NEW_GET = {
+    "standby": {"start": "18:00", "end": "08:00", "wake_idle_seconds": 300},
+    "accident_seconds": 15,
+    "edit_lock_seconds": 60,
+    "custom_holidays_file": "data/custom_holidays.csv",
+    "links": {"items": [], "max_stay_seconds": 300},
+}
+
+
 def cfg_bytes(tmp_path):
     p = tmp_path / "config.json"
     return p.read_bytes() if p.exists() else None
@@ -36,14 +45,21 @@ def test_get_returns_raw_configured_values(tmp_path):
                 {"label": "文書1", "folder": "documents/doc1"},
                 {"label": "文書2", "folder": "documents/doc2"},
                 {"label": "文書3", "folder": "documents/doc3"},
-            ]
+            ],
+            "idle_return_seconds": 120,
         },
         "telop": {"speed": 100, "folder": "telop"},
         "company_name": "サンプル工業(株)",
+        **NEW_GET,
     }
     cfg = {"documents": {"buttons": [{"label": "A", "folder": "D:/文書"}]}, "telop": {"speed": 40, "folder": "x"}}
     got = make(tmp_path / "o", cfg).get("/api/admin-settings").get_json()
-    assert got == {"documents": {"buttons": [{"label": "A", "folder": "D:/文書"}]}, "telop": {"speed": 40, "folder": "x"}, "company_name": "サンプル工業(株)"}
+    assert got == {
+        "documents": {"buttons": [{"label": "A", "folder": "D:/文書"}], "idle_return_seconds": 120},
+        "telop": {"speed": 40, "folder": "x"},
+        "company_name": "サンプル工業(株)",
+        **NEW_GET,
+    }
 
 
 def test_post_happy_path_saves_and_applies_without_restart(tmp_path):
@@ -54,7 +70,12 @@ def test_post_happy_path_saves_and_applies_without_restart(tmp_path):
     saved = json.loads((tmp_path / "config.json").read_text(encoding="utf-8"))
     assert saved["documents"]["buttons"] == GOOD["documents"]["buttons"]
     assert saved["telop"] == {"speed": 250}
-    assert c.get("/api/admin-settings").get_json() == {**GOOD, "telop": {"speed": 250, "folder": "telop"}, "company_name": "サンプル工業(株)"}
+    assert c.get("/api/admin-settings").get_json() == {
+        "documents": {**GOOD["documents"], "idle_return_seconds": 120},
+        "telop": {"speed": 250, "folder": "telop"},
+        "company_name": "サンプル工業(株)",
+        **NEW_GET,
+    }
     # フォルダが作られ、次のリクエストから新しいフォルダが使われる
     assert (tmp_path / "docs" / "new1").is_dir() and (tmp_path / "docs" / "new2").is_dir()
     (tmp_path / "docs" / "new1" / "手順.pdf").write_bytes(b"%PDF-1.4")

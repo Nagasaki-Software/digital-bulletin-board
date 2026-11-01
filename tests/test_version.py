@@ -19,7 +19,7 @@ def test_health_returns_version_and_is_cheap(tmp_path):
     rev = c.get("/api/rev").get_json()["rev"]
     r = c.get("/api/health")
     assert r.status_code == 200
-    assert r.get_json() == {"status": "ok", "version": APP_VERSION}
+    assert r.get_json() == {"status": "ok", "version": APP_VERSION, "app": "digital-bulletin-board"}
     assert "charset=utf-8" in r.headers["Content-Type"].lower()
     for _ in range(3):
         assert c.get("/api/health").status_code == 200

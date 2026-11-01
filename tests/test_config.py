@@ -8,7 +8,7 @@ def test_defaults_when_file_missing(tmp_path):
     assert cfg["accident_seconds"] == 15
     assert cfg["edit_lock_seconds"] == 60
     assert cfg["default_theme"] == "light"
-    assert cfg["standby"] == {"start": "18:00", "end": "07:30", "wake_idle_seconds": 300}
+    assert cfg["standby"] == {"start": "18:00", "end": "08:00", "wake_idle_seconds": 300}
     assert [b["label"] for b in cfg["documents"]["buttons"]] == ["文書1", "文書2", "文書3"]
 
 
@@ -20,7 +20,7 @@ def test_partial_override_keeps_other_defaults(tmp_path):
     )
     cfg = load_config(p)
     assert cfg["company_name"] == "テスト(株)"
-    assert cfg["standby"] == {"start": "19:00", "end": "07:30", "wake_idle_seconds": 300}
+    assert cfg["standby"] == {"start": "19:00", "end": "08:00", "wake_idle_seconds": 300}
 
 
 def test_bom_is_accepted(tmp_path):
@@ -134,10 +134,10 @@ def test_good_seconds_accepted_including_decimal(tmp_path):
 def test_standby_wrong_shape(tmp_path):
     for bad in [None, "18:00", 5, ["18:00"]]:
         cfg = load_config(write_cfg(tmp_path, {"standby": bad}))
-        assert cfg["standby"] == {"start": "18:00", "end": "07:30", "wake_idle_seconds": 300}, bad
+        assert cfg["standby"] == {"start": "18:00", "end": "08:00", "wake_idle_seconds": 300}, bad
         assert any("standby" in w for w in cfg["_warnings"]), bad
     cfg = load_config(write_cfg(tmp_path, {"standby": {"start": "25:00", "end": 7, "wake_idle_seconds": 60}}))
-    assert cfg["standby"] == {"start": "18:00", "end": "07:30", "wake_idle_seconds": 60}
+    assert cfg["standby"] == {"start": "18:00", "end": "08:00", "wake_idle_seconds": 60}
     assert len(cfg["_warnings"]) == 2
 
 
