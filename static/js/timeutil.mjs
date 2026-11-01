@@ -16,11 +16,16 @@ export function formatRangeOrDash(start, end) {
 }
 
 // 同じ日に、1つでも入力のある行があれば、その日の「―」だけの行（何も入力されていない行）は出さない。
-// 入力のある行をすべて消したときは、「―」の行がまた出る（休日の日付がいつも分かるように）
+// 入力のある行をすべて消したときは、「―」の行がまた出る（休日の日付がいつも分かるように）。
+// 隠すのは、最初から並ぶ「―」の行＝その日の最初の行（id が最小）だけ。「＋ 行を追加」で足した空の行は、入力するまで出す
 export function visibleHolidayRows(rows) {
   const filled = (r) => Boolean(r.construction || r.person || r.work || r.start_time || r.end_time);
   const datesWithEntry = new Set(rows.filter(filled).map((r) => r.date));
-  return rows.filter((r) => filled(r) || !datesWithEntry.has(r.date));
+  const firstId = new Map();
+  for (const r of rows) {
+    if (!firstId.has(r.date) || r.id < firstId.get(r.date)) firstId.set(r.date, r.id);
+  }
+  return rows.filter((r) => filled(r) || !datesWithEntry.has(r.date) || r.id !== firstId.get(r.date));
 }
 
 export function contactText(ext, outside) {
