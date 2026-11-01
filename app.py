@@ -330,8 +330,11 @@ def create_app(base_dir=None, today_func=date.today, port=None, cfg=None, log_re
         return body if isinstance(body, dict) else None
 
     def prepare():
-        d = today_func().isoformat()
+        today = today_func()
+        d = today.isoformat()
         db.ensure_day(d)
+        # 今週の休日の行を、最初から1日1行ずつ用意しておく（作るのは1回だけ。消した行は戻らない）
+        db.seed_holidays([w["date"] for w in mst.week_holidays(today, masters.load_all()["custom_holidays"])])
         return d
 
     def clean_fields(body, allowed):

@@ -155,8 +155,8 @@ def test_shared_absolute_path_is_used_for_week_holidays_and_edits_refresh_screen
     p.write_bytes(CRLF.replace("創立記念日".encode(), "創立記念".encode()))  # Excel で直した
     assert rev(c) != r1
     assert "11/5(木・創立記念)" in labels(c)
-    holiday_row = c.get("/api/board").get_json()["holiday_rows"][0]
-    assert holiday_row["label"] == "11/5(木・創立記念)"
+    rows = [r for r in c.get("/api/board").get_json()["holiday_rows"] if r["date"] == "2026-11-05"]
+    assert [r["label"] for r in rows] == ["11/5(木・創立記念)"] * 2  # 最初から作られた行と、上で足した行
 
 
 def test_missing_configured_file_shows_one_banner_warning_and_falls_back_to_jpholiday(tmp_path):

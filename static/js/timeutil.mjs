@@ -3,6 +3,26 @@ export function formatRange(start, end) {
   return `${start}～${end}`;
 }
 
+// 休日出勤予定の表: 空の欄は「―」で表す（保存する値は空のまま）
+export const EMPTY_MARK = "―";
+
+export function orDash(text) {
+  return text ? text : EMPTY_MARK;
+}
+
+// 開始・終了のどちらも空なら「―」。片方だけ入っているときは formatRange のまま
+export function formatRangeOrDash(start, end) {
+  return formatRange(start, end) || EMPTY_MARK;
+}
+
+// 同じ日に、1つでも入力のある行があれば、その日の「―」だけの行（何も入力されていない行）は出さない。
+// 入力のある行をすべて消したときは、「―」の行がまた出る（休日の日付がいつも分かるように）
+export function visibleHolidayRows(rows) {
+  const filled = (r) => Boolean(r.construction || r.person || r.work || r.start_time || r.end_time);
+  const datesWithEntry = new Set(rows.filter(filled).map((r) => r.date));
+  return rows.filter((r) => filled(r) || !datesWithEntry.has(r.date));
+}
+
 export function contactText(ext, outside) {
   const parts = [];
   if (ext) parts.push("内線 " + ext);

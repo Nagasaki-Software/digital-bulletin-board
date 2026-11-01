@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS holiday_rows(
     person TEXT NOT NULL DEFAULT '', work TEXT NOT NULL DEFAULT '',
     start_time TEXT NOT NULL DEFAULT '', end_time TEXT NOT NULL DEFAULT '',
     construction TEXT NOT NULL DEFAULT '');
+CREATE TABLE IF NOT EXISTS holiday_seeded(date TEXT PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS checked_genres(
     date TEXT NOT NULL, genre TEXT NOT NULL, PRIMARY KEY(date, genre));
 """
@@ -244,6 +245,20 @@ class BoardDB:
             if cur.rowcount:
                 self._bump(c)
             return cur.rowcount > 0
+
+    def seed_holidays(self, dates):
+        # 休日1日につき、空の行を1回だけ作る。一度作った日付は holiday_seeded に残すので、利用者が消した行は戻らない
+        # すでにその日の行がある日付（この仕組みより前の board.db）には足さない
+        with self._tx() as c:
+            changed = False
+            for d in dates:
+                if c.execute("INSERT OR IGNORE INTO holiday_seeded(date) VALUES (?)", (d,)).rowcount:
+                    if not c.execute("SELECT 1 FROM holiday_rows WHERE date = ?", (d,)).fetchone():
+                        c.execute("INSERT INTO holiday_rows(date) VALUES (?)", (d,))
+                    changed = True
+            if changed:
+                self._bump(c)
+            return changed
 
     # ---- 作業ジャンル ----
     def get_checked_genres(self, d):

@@ -98,3 +98,27 @@ def test_front_end_applies_new_values_on_every_refresh(tmp_path):
     # 表示中のスライドにも新しい秒数が効く（長い秒数から短くしても、古い秒数を待たない）
     accident = c.get("/js/accident.js").get_data(as_text=True)
     assert "export function setSeconds" in accident and "advancing" in accident
+
+
+def test_empty_cells_show_a_bar_only_in_the_holiday_table(tmp_path):
+    c = create_app(tmp_path).test_client()
+    js = c.get("/js/board.js").get_data(as_text=True)
+    schedule = js[js.index("function renderSchedule"):js.index("function renderHolidays")]
+    holidays = js[js.index("function renderHolidays"):js.index("function renderGenres")]
+    assert "orDash" not in schedule and "formatRangeOrDash" not in schedule and "holidayTd" not in schedule
+    assert "formatRange(r.start_time, r.end_time)" in schedule
+    assert holidays.count("holidayTd(") == 3 and "formatRangeOrDash(r.start_time, r.end_time)" in holidays
+    assert "formatRange(r.start_time" not in holidays.replace("formatRangeOrDash(", "")
+    assert "td(r.construction" not in holidays and "td(r.person" not in holidays and "td(r.work" not in holidays
+    assert 'import { formatRange, formatRangeOrDash, orDash, contactText, visibleHolidayRows } from "./timeutil.mjs"' in js
+    css = c.get("/board.css").get_data(as_text=True)
+    assert "td.dash { color: var(--muted); }" in css
+
+
+def test_holiday_table_hides_dash_only_rows_when_the_day_has_an_entry(tmp_path):
+    c = create_app(tmp_path).test_client()
+    js = c.get("/js/board.js").get_data(as_text=True)
+    assert "visibleHolidayRows(state.holiday_rows)" in js
+    # 「―」だけの行が減った分の、空き行の数え方も、見えている行で数える
+    assert "holidayRows.length" in js and "state.holiday_rows.length" not in js
+    assert "export function visibleHolidayRows" in c.get("/js/timeutil.mjs").get_data(as_text=True)

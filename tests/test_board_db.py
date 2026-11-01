@@ -303,3 +303,96 @@ def test_rev_increases_on_every_write(db):
     assert r0 < r1 < r2 < r3
     db.ensure_day(D1)
     assert db.get_rev() == r3
+
+
+# ---- 今週の休日の行を最初から作る ----
+WEEK = ("2026-11-03", "2026-11-07", "2026-11-08")
+WEEK_START, WEEK_END = "2026-11-02", "2026-11-08"
+
+
+def week_rows(db):
+    return db.list_holiday_rows(WEEK_START, WEEK_END)
+
+
+def test_seed_holidays_creates_one_empty_row_per_date(db):
+    assert db.seed_holidays(WEEK) is True
+    rows = week_rows(db)
+    assert [r["date"] for r in rows] == list(WEEK)
+    for r in rows:
+        assert (r["construction"], r["person"], r["work"], r["start_time"], r["end_time"]) == ("", "", "", "", "")
+
+
+def test_seed_holidays_is_idempotent_and_does_not_bump_rev_again(db):
+    r0 = db.get_rev()
+    assert db.seed_holidays(WEEK) is True
+    r1 = db.get_rev()
+    assert r1 > r0
+    assert db.seed_holidays(WEEK) is False
+    assert db.seed_holidays([]) is False
+    assert db.get_rev() == r1
+    assert len(week_rows(db)) == 3
+
+
+def test_deleted_seeded_row_does_not_come_back(db):
+    db.seed_holidays(WEEK)
+    row = week_rows(db)[1]
+    assert db.delete_holiday_row(row["id"]) is True
+    assert db.seed_holidays(WEEK) is False
+    assert [r["date"] for r in week_rows(db)] == ["2026-11-03", "2026-11-08"]
+
+
+def test_holiday_added_later_gets_its_row(db):
+    db.seed_holidays(WEEK)
+    assert db.seed_holidays(WEEK + ("2026-11-05",)) is True
+    assert [r["date"] for r in week_rows(db)] == ["2026-11-03", "2026-11-05", "2026-11-07", "2026-11-08"]
+    assert db.seed_holidays(WEEK + ("2026-11-05",)) is False
+
+
+def test_seed_does_not_add_a_row_where_one_already_exists(db):
+    # 旧版の board.db には、この仕組みの前に利用者が入れた行がある。その日付には空の行を足さない
+    rid = db.add_holiday_row("2026-11-07")
+    db.update_holiday_row(rid, {"person": "山田"})
+    db.seed_holidays(WEEK)
+    rows = week_rows(db)
+    assert [r["date"] for r in rows] == ["2026-11-03", "2026-11-07", "2026-11-08"]
+    assert rows[1]["person"] == "山田"
+    assert db.seed_holidays(WEEK) is False
+
+
+def test_seeding_survives_reopening_an_existing_database(tmp_path):
+    path = tmp_path / "board.db"
+    BoardDB(path).seed_holidays(WEEK)
+    db = BoardDB(path)
+    assert db.seed_holidays(WEEK) is False
+    assert len(week_rows(db)) == 3
+
+
+def test_seed_table_is_added_to_a_database_made_before_this_feature(tmp_path):
+    path = tmp_path / "board.db"
+    make_old_db(path)
+    db = BoardDB(path)
+    assert db.seed_holidays(WEEK) is True
+    rows = week_rows(db)
+    assert sorted(r["date"] for r in rows) == ["2026-11-03", "2026-11-07", "2026-11-08"]
+    assert [r["person"] for r in rows if r["date"] == "2026-11-07"] == ["山田"]
+
+
+def test_concurrent_first_seeding_creates_each_row_once(tmp_path):
+    path = tmp_path / "board.db"
+    db = BoardDB(path)
+    errors, results = [], []
+
+    def seed():
+        try:
+            results.append(BoardDB(path).seed_holidays(WEEK))
+        except Exception as e:
+            errors.append(e)
+
+    threads = [threading.Thread(target=seed) for _ in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert errors == []
+    assert results.count(True) == 1
+    assert [r["date"] for r in week_rows(db)] == list(WEEK)

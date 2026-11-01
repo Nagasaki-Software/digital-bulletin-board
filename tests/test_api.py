@@ -40,6 +40,11 @@ def board(c):
     return r.get_json()
 
 
+def holiday_row(c, rid):
+    """休日出勤予定の行を id で探す（最初から休日の行が入っているので、先頭の行とは限らない）。"""
+    return next(r for r in board(c)["holiday_rows"] if r["id"] == rid)
+
+
 def add_row(c, **fields):
     rid = c.post("/api/schedule").get_json()["id"]
     if fields:
@@ -53,7 +58,8 @@ def test_board_basics(env):
     assert b["today"] == "2026-11-02"
     assert b["date_label"] == "2026年11月2日（月）"
     assert b["company_name"] == "サンプル工業(株)"
-    assert b["schedule"] == [] and b["holiday_rows"] == []
+    assert b["schedule"] == []
+    assert [r["date"] for r in b["holiday_rows"]] == ["2026-11-03", "2026-11-07", "2026-11-08"]  # 今週の休日の空の行
     assert [n["position"] for n in b["notices"]] == [1, 2, 3]
     assert b["masters"]["genres"] == ["溶接作業", "高所作業", "電気配線", "その他"]
     assert b["doc_buttons"] == [
@@ -181,7 +187,7 @@ def test_holiday_rows_only_on_this_weeks_holidays(env):
     assert c.patch(f"/api/holiday-rows/{rid}", json={"date": "2026-11-03"}).status_code == 200
     b = board(c)
     assert [w["label"] for w in b["week_holidays"]] == ["11/3(火・文化の日)", "11/7(土)", "11/8(日)"]
-    row = b["holiday_rows"][0]
+    row = holiday_row(c, rid)
     assert (row["label"], row["kind"], row["person"]) == ("11/3(火・文化の日)", "holiday", "山田")
 
 
@@ -189,16 +195,18 @@ def test_holiday_rows_sorted_by_date(env):
     c, _, _ = env
     c.post("/api/holiday-rows", json={"date": "2026-11-07"})
     c.post("/api/holiday-rows", json={"date": "2026-11-03"})
-    assert [r["date"] for r in board(c)["holiday_rows"]] == ["2026-11-03", "2026-11-07"]
+    rows = board(c)["holiday_rows"]
+    assert [r["date"] for r in rows] == ["2026-11-03", "2026-11-03", "2026-11-07", "2026-11-07", "2026-11-08"]
+    assert rows[0]["id"] < rows[1]["id"] and rows[2]["id"] < rows[3]["id"]
 
 
 def test_monday_resets_holiday_rows(env):
     c, clock, _ = env
     c.post("/api/holiday-rows", json={"date": "2026-11-07"})
-    assert len(board(c)["holiday_rows"]) == 1
+    assert len(board(c)["holiday_rows"]) == 4  # 最初の休日の行3つ＋足した1つ
     clock["today"] = date(2026, 11, 9)
     b = board(c)
-    assert b["holiday_rows"] == []
+    assert [r["date"] for r in b["holiday_rows"]] == ["2026-11-14", "2026-11-15"]  # 先週の行は出ない。新しい週の休日の行だけ
     assert [w["date"] for w in b["week_holidays"]] == ["2026-11-14", "2026-11-15"]
 
 
@@ -272,9 +280,9 @@ def test_board_exposes_constructions_master_and_row_field(env):
     b = board(c)
     assert b["masters"]["constructions"] == ["配管工事", "電気工事"]
     assert b["schedule"][0]["construction"] == ""
-    assert b["holiday_rows"][0]["construction"] == ""
+    assert holiday_row(c, hid)["construction"] == ""
     assert c.patch(f"/api/holiday-rows/{hid}", json={"construction": "電気工事"}).status_code == 200
-    assert board(c)["holiday_rows"][0]["construction"] == "電気工事"
+    assert holiday_row(c, hid)["construction"] == "電気工事"
 
 
 def test_schedule_construction_must_be_registered(env):
@@ -293,10 +301,10 @@ def test_holiday_construction_must_be_registered(env):
     c, _, _ = env
     hid = c.post("/api/holiday-rows", json={"date": "2026-11-07"}).get_json()["id"]
     assert c.patch(f"/api/holiday-rows/{hid}", json={"construction": "電気工事"}).status_code == 200
-    assert board(c)["holiday_rows"][0]["construction"] == "電気工事"
+    assert holiday_row(c, hid)["construction"] == "電気工事"
     assert c.patch(f"/api/holiday-rows/{hid}", json={"construction": "未登録工事"}).status_code == 400
     assert c.patch(f"/api/holiday-rows/{hid}", json={"construction": ["配管工事"]}).status_code == 400
-    assert board(c)["holiday_rows"][0]["construction"] == "電気工事"
+    assert holiday_row(c, hid)["construction"] == "電気工事"
     assert c.patch(f"/api/holiday-rows/{hid}", json={"construction": ""}).status_code == 200
 
 
@@ -354,7 +362,7 @@ def test_holiday_date_must_be_exact_string(env):
     hid = c.post("/api/holiday-rows", json={"date": "2026-11-07"}).get_json()["id"]
     for bad_date in ["abc", 5, ["2026-11-07"], "2026/11/08"]:
         assert c.patch(f"/api/holiday-rows/{hid}", json={"date": bad_date}).status_code == 400, bad_date
-    assert board(c)["holiday_rows"][0]["date"] == "2026-11-07"
+    assert holiday_row(c, hid)["date"] == "2026-11-07"
 
 
 def test_first_write_of_a_day_still_carries_over(env):
@@ -554,3 +562,127 @@ def test_removed_genre_is_not_listed_as_checked(env):
     assert board(c)["checked_genres"] == ["溶接作業", "高所作業"]
     (base / "data" / "genres.csv").write_text("name\n高所作業\nその他\n", encoding="utf-8-sig")
     assert board(c)["checked_genres"] == ["高所作業"]
+
+
+# ---- 今週の休日の行を最初から作る ----
+def holiday_dates(c):
+    return [r["date"] for r in board(c)["holiday_rows"]]
+
+
+def all_holiday_rows(base):
+    import sqlite3
+
+    conn = sqlite3.connect(base / "data" / "board.db")
+    try:
+        return [r[0] for r in conn.execute("SELECT date FROM holiday_rows ORDER BY date, id")]
+    finally:
+        conn.close()
+
+
+def test_first_board_has_one_empty_row_per_week_holiday(env):
+    c, _, _ = env
+    b = board(c)  # 2026-11-02(月): 火=文化の日、土、日
+    assert [r["date"] for r in b["holiday_rows"]] == ["2026-11-03", "2026-11-07", "2026-11-08"]
+    assert [r["label"] for r in b["holiday_rows"]] == [w["label"] for w in b["week_holidays"]]
+    assert [r["kind"] for r in b["holiday_rows"]] == ["holiday", "saturday", "holiday"]
+    for r in b["holiday_rows"]:
+        assert (r["construction"], r["person"], r["work"], r["start_time"], r["end_time"]) == ("", "", "", "", "")
+
+
+def test_seeding_in_a_week_without_public_holidays(env):
+    c, clock, _ = env
+    clock["today"] = date(2026, 11, 11)
+    assert holiday_dates(c) == ["2026-11-14", "2026-11-15"]
+
+
+def test_seeding_includes_past_holidays_of_this_week(env):
+    c, clock, _ = env
+    clock["today"] = date(2026, 11, 8)  # 日曜: 文化の日も土曜も過ぎている
+    assert holiday_dates(c) == ["2026-11-03", "2026-11-07", "2026-11-08"]
+
+
+def test_seeding_includes_company_holidays_from_the_file(env):
+    c, _, base = env
+    (base / "data" / "custom_holidays.csv").write_text("date,name\n2026-11-05,創立記念日\n", encoding="utf-8-sig")
+    assert holiday_dates(c) == ["2026-11-03", "2026-11-05", "2026-11-07", "2026-11-08"]
+
+
+def test_seeding_is_idempotent_across_requests_and_rev_settles(env):
+    c, _, _ = env
+    board(c)
+    rev1 = c.get("/api/rev").get_json()["rev"]
+    for _ in range(3):
+        assert len(holiday_dates(c)) == 3
+    assert c.get("/api/rev").get_json()["rev"] == rev1
+
+
+def test_any_write_endpoint_seeds_before_the_board_is_read(env):
+    c, _, base = env
+    c.post("/api/genres/toggle", json={"name": "溶接作業", "checked": True})
+    assert all_holiday_rows(base) == ["2026-11-03", "2026-11-07", "2026-11-08"]
+
+
+def test_deleted_seeded_row_stays_deleted(env):
+    c, _, _ = env
+    rows = board(c)["holiday_rows"]
+    assert c.delete(f"/api/holiday-rows/{rows[1]['id']}").status_code == 200
+    assert holiday_dates(c) == ["2026-11-03", "2026-11-08"]
+    assert holiday_dates(c) == ["2026-11-03", "2026-11-08"]
+
+
+def test_company_holiday_added_later_gets_its_row(env):
+    c, _, base = env
+    assert len(holiday_dates(c)) == 3
+    (base / "data" / "custom_holidays.csv").write_text("date,name\n2026-11-05,創立記念日\n", encoding="utf-8-sig")
+    assert holiday_dates(c) == ["2026-11-03", "2026-11-05", "2026-11-07", "2026-11-08"]
+
+
+def test_seeding_creates_rows_only_for_the_current_week(env):
+    c, clock, base = env
+    board(c)
+    assert all_holiday_rows(base) == ["2026-11-03", "2026-11-07", "2026-11-08"]
+    clock["today"] = date(2026, 11, 9)  # 新しい週の月曜
+    assert holiday_dates(c) == ["2026-11-14", "2026-11-15"]
+    assert all_holiday_rows(base) == ["2026-11-03", "2026-11-07", "2026-11-08", "2026-11-14", "2026-11-15"]
+
+
+def test_filling_a_seeded_row_works_as_before(env):
+    c, _, _ = env
+    row = board(c)["holiday_rows"][1]
+    fields = {"construction": "電気工事", "person": "山田", "work": "配線工事", "start_time": "", "end_time": ""}
+    assert c.patch(f"/api/holiday-rows/{row['id']}", json=fields).status_code == 200
+    assert c.patch(f"/api/holiday-rows/{row['id']}", json={"person": "未登録"}).status_code == 400
+    rows = board(c)["holiday_rows"]
+    assert len(rows) == 3
+    assert (rows[1]["id"], rows[1]["construction"], rows[1]["person"], rows[1]["work"]) == (row["id"], "電気工事", "山田", "配線工事")
+    assert c.patch(f"/api/holiday-rows/{row['id']}", json={"person": ""}).status_code == 200
+    assert board(c)["holiday_rows"][1]["person"] == ""
+
+
+def test_extra_row_can_still_be_added_and_sorts_by_date_then_id(env):
+    c, _, _ = env
+    new_id = c.post("/api/holiday-rows", json={"date": "2026-11-07"}).get_json()["id"]
+    rows = board(c)["holiday_rows"]
+    assert [r["date"] for r in rows] == ["2026-11-03", "2026-11-07", "2026-11-07", "2026-11-08"]
+    assert rows[2]["id"] == new_id and rows[1]["id"] < new_id
+
+
+def test_concurrent_first_boards_do_not_duplicate_rows(env):
+    import threading
+
+    c, _, base = env
+    errors = []
+
+    def go():
+        try:
+            assert c.get("/api/board").status_code == 200
+        except Exception as e:
+            errors.append(e)
+
+    threads = [threading.Thread(target=go) for _ in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert errors == []
+    assert all_holiday_rows(base) == ["2026-11-03", "2026-11-07", "2026-11-08"]

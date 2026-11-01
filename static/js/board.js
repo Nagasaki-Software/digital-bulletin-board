@@ -1,6 +1,6 @@
 import { api } from "./api.js";
 import { pickOption, inputText, confirmBox, alertBox } from "./picker.js";
-import { formatRange, contactText } from "./timeutil.mjs";
+import { formatRange, formatRangeOrDash, orDash, contactText, visibleHolidayRows } from "./timeutil.mjs";
 import { setPlaylist, setSeconds, pause as pauseAccident, resume as resumeAccident } from "./accident.js";
 import { renderDocButtons, closeDocuments } from "./documents.js";
 import { renderLinkButtons, closeLink, initLinks } from "./links.js";
@@ -37,6 +37,11 @@ function td(text, { cls = "", onClick = null } = {}) {
     });
   }
   return e;
+}
+
+// 休日出勤予定の表だけ、空の欄を「―」で出す（薄い色。押すと選ぶ画面が開くのは入力済みの欄と同じ）
+function holidayTd(value, cls, onClick) {
+  return td(orDash(value), { cls: (cls + (value ? "" : " dash")).trim(), onClick });
 }
 
 function actBtn(label, onClick, disabled = false, extraCls = "") {
@@ -154,19 +159,21 @@ function renderHolidays() {
   keepScroll("holiday-wrap", () => {
     const body = document.querySelector("#holidays tbody");
     body.innerHTML = "";
-    for (const r of state.holiday_rows) {
+    const holidayRows = visibleHolidayRows(state.holiday_rows);
+    for (const r of holidayRows) {
       const tr = el("tr");
       tr.appendChild(td(r.label, { cls: ("b " + dateClass(r.kind)).trim(), onClick: () => editHolidayDate(r) }));
-      tr.appendChild(td(r.construction, { cls: "constr", onClick: () => editHoliday(r, "construction") }));
-      tr.appendChild(td(r.person, { cls: "b", onClick: () => editHoliday(r, "person") }));
-      tr.appendChild(td(r.work, { onClick: () => editHoliday(r, "work") }));
-      tr.appendChild(td(formatRange(r.start_time, r.end_time), { cls: "c", onClick: () => editTimes(`/api/holiday-rows/${r.id}`, r) }));
+      tr.appendChild(holidayTd(r.construction, "constr", () => editHoliday(r, "construction")));
+      tr.appendChild(holidayTd(r.person, "b", () => editHoliday(r, "person")));
+      tr.appendChild(holidayTd(r.work, "", () => editHoliday(r, "work")));
+      const range = formatRangeOrDash(r.start_time, r.end_time);
+      tr.appendChild(td(range, { cls: "c" + (r.start_time || r.end_time ? "" : " dash"), onClick: () => editTimes(`/api/holiday-rows/${r.id}`, r) }));
       const act = td("", { cls: "edit-only" });
       act.appendChild(actBtn("✕", () => removeRow(`/api/holiday-rows/${r.id}`)));
       tr.appendChild(act);
       body.appendChild(tr);
     }
-    for (let i = state.holiday_rows.length; i < MIN_HOLIDAY_ROWS; i++) body.appendChild(fillerRow());
+    for (let i = holidayRows.length; i < MIN_HOLIDAY_ROWS; i++) body.appendChild(fillerRow());
   });
 }
 
