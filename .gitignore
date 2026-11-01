@@ -1,0 +1,13 @@
+.venv/
+.browser/
+.claude/
+__pycache__/
+.pytest_cache/
+config.json
+config.json.tmp
+telop/
+data/board.db
+data/board.db-wal
+data/board.db-shm
+accident_cases/
+documents/

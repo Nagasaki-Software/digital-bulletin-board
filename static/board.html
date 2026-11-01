@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>デジタル掲示板</title>
+  <script>
+    // 初回描画の前に、この端末で選んだ配色を適用する（theme.js と同じ localStorage キー・属性）
+    try {
+      var t = localStorage.getItem("dbb.theme");
+      if (t === "dark" || t === "light") document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
+  <link rel="stylesheet" href="/board.css">
+</head>
+<body class="locked">
+  <div id="board">
+    <header>
+      <div id="date-title"></div>
+      <div id="top-right">
+        <button id="btn-edit" class="head-btn edit-btn" type="button" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+          <span id="btn-edit-label">編集</span>
+        </button>
+        <button id="btn-gear" class="head-btn" type="button" aria-label="設定">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+        <span id="company-name"></span>
+      </div>
+    </header>
+    <div id="warnings" hidden></div>
+    <main>
+      <section id="left">
+        <h2>連絡事項</h2>
+        <div id="notices"></div>
+        <button id="btn-add-notice" class="add-btn edit-only" type="button">＋ 連絡事項を追加</button>
+        <h2>本日の作業予定</h2>
+        <div class="table-wrap" id="schedule-wrap">
+          <table id="schedule">
+            <thead><tr>
+              <th class="c-constr">工事件名</th>
+              <th class="c-company">所属・会社名</th><th class="c-leader">責任者</th>
+              <th class="c-work">作業内容</th><th class="c-time">就業予定</th>
+              <th class="c-act edit-only"></th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <button id="btn-add-schedule" class="add-btn edit-only" type="button">＋ 行を追加</button>
+      </section>
+      <section id="right">
+        <div id="accident-frame">
+          <canvas id="accident-canvas" hidden></canvas>
+          <div id="accident-msg"></div>
+          <div id="accident-tag" hidden></div>
+          <div id="accident-count" hidden></div>
+          <div id="accident-bar" hidden><div id="accident-bar-fill"></div></div>
+        </div>
+        <h2>作業ジャンル</h2>
+        <div id="genres"></div>
+        <h2>今週の休日出勤予定</h2>
+        <div class="table-wrap" id="holiday-wrap">
+          <table id="holidays">
+            <thead><tr>
+              <th class="c-date">日付</th><th class="c-constr">工事件名</th>
+              <th class="c-person">氏名・会社名</th>
+              <th class="c-work">作業内容</th><th class="c-time">就業予定</th>
+              <th class="c-act edit-only"></th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <button id="btn-add-holiday" class="add-btn edit-only" type="button">＋ 行を追加</button>
+        <div id="doc-buttons"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="telop" aria-label="お知らせ">
+    <div id="telop-label"><span class="telop-icon" aria-hidden="true">i</span><span>お知らせ</span></div>
+    <div id="telop-scroll"><div id="telop-track"></div></div>
+  </div>
+
+  <div id="picker" class="overlay" hidden></div>
+
+  <div id="documents" class="overlay" hidden>
+    <div class="docs-head">
+      <div id="docs-title"></div>
+      <div class="docs-head-actions">
+        <button id="docs-back" class="opt" type="button" hidden>一覧へ</button>
+        <button id="docs-close" class="opt" type="button">閉じる</button>
+      </div>
+    </div>
+    <div id="doc-list"></div>
+    <div id="doc-viewer" hidden>
+      <div class="viewer-bar">
+        <button id="doc-prev" class="opt" type="button">◀</button>
+        <span id="doc-page"></span>
+        <button id="doc-next" class="opt" type="button">▶</button>
+        <button id="doc-zoom-out" class="opt" type="button">－</button>
+        <button id="doc-zoom-in" class="opt" type="button">＋</button>
+      </div>
+      <div id="doc-canvas-wrap"><canvas id="doc-canvas"></canvas></div>
+    </div>
+  </div>
+
+  <div id="settings" class="overlay" hidden>
+    <div class="panel settings-panel">
+      <h3>設定</h3>
+      <div class="panel-body">
+        <h4 class="group-title">この端末だけ（このパソコンのブラウザに保存）</h4>
+        <p class="setting-title">編集ボタン</p>
+        <label class="radio"><input type="radio" name="edit-button" value="on"> あり（普段は閲覧のみ。「編集」を押すと入力できる）</label>
+        <label class="radio"><input type="radio" name="edit-button" value="off"> なし（常に入力できる）</label>
+        <p class="setting-title">配色</p>
+        <label class="radio"><input type="radio" name="theme" value="light"> 明るい</label>
+        <label class="radio"><input type="radio" name="theme" value="dark"> 暗い</label>
+
+        <h4 class="group-title">全端末共通（サーバーに保存。保存すると全部の画面に反映）</h4>
+        <div class="field-line">
+          <label for="company-input">会社名（右上に表示）</label>
+          <input id="company-input" type="text" maxlength="100" placeholder="例: ○○工業(株)">
+        </div>
+        <div class="field-line">
+          <label for="telop-folder">テロップフォルダ</label>
+          <input id="telop-folder" class="f-folder" type="text" maxlength="260" placeholder="空欄=telopフォルダ">
+        </div>
+        <p class="hint">equipment-inspection と共通にするには、そのサイネージの PDF フォルダ（テキストファイルを置く場所）のパスを入れます</p>
+        <div class="field-line">
+          <label for="telop-speed">テロップ速度</label>
+          <input id="telop-speed" type="number" min="20" max="500" step="1" inputmode="numeric">
+          <span>px/秒（20〜500）</span>
+        </div>
+        <p class="setting-title">文書掲示</p>
+        <div class="field-line">
+          <label for="doc-count">ボタン数（1〜5）</label>
+          <input id="doc-count" type="number" min="1" max="5" step="1" inputmode="numeric">
+        </div>
+        <div class="doc-row">
+          <input type="text" id="doc-label-0" class="f-label" maxlength="100" placeholder="ラベル 1">
+          <input type="text" id="doc-folder-0" class="f-folder" maxlength="260" placeholder="フォルダパス">
+        </div>
+        <div class="doc-row">
+          <input type="text" id="doc-label-1" class="f-label" maxlength="100" placeholder="ラベル 2">
+          <input type="text" id="doc-folder-1" class="f-folder" maxlength="260" placeholder="フォルダパス">
+        </div>
+        <div class="doc-row">
+          <input type="text" id="doc-label-2" class="f-label" maxlength="100" placeholder="ラベル 3">
+          <input type="text" id="doc-folder-2" class="f-folder" maxlength="260" placeholder="フォルダパス">
+        </div>
+        <div class="doc-row">
+          <input type="text" id="doc-label-3" class="f-label" maxlength="100" placeholder="ラベル 4">
+          <input type="text" id="doc-folder-3" class="f-folder" maxlength="260" placeholder="フォルダパス">
+        </div>
+        <div class="doc-row">
+          <input type="text" id="doc-label-4" class="f-label" maxlength="100" placeholder="ラベル 5">
+          <input type="text" id="doc-folder-4" class="f-folder" maxlength="260" placeholder="フォルダパス">
+        </div>
+        <p class="hint">フォルダは、アプリのフォルダからの場所（例 documents/doc1）か、D:/文書 や //server/share/文書 のようにすべて書いて指定します。無いフォルダは自動で作ります。ボタン数より後ろの行（灰色）は使われません。</p>
+        <div id="settings-msg" class="status-line" role="alert" hidden></div>
+        <div class="save-line">
+          <button id="settings-save" class="opt save-btn" type="button">保存して適用</button>
+        </div>
+      </div>
+      <div class="panel-actions"><button id="settings-close" class="opt" type="button">閉じる</button></div>
+      <p id="app-version-line" class="version-line" hidden>バージョン <span id="app-version"></span></p>
+    </div>
+  </div>
+
+  <div id="standby" class="overlay" hidden>
+    <div id="standby-clock"></div>
+    <div id="standby-date"></div>
+  </div>
+
+  <script type="module" src="/js/board.js"></script>
+</body>
+</html>

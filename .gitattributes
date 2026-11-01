@@ -1,0 +1,3 @@
+# 文字コードと改行を変換せず、ファイルの中身のまま保存・配布する。
+# （.bat は Shift-JIS(cp932) + CRLF、data/*.csv は BOM 付き UTF-8 のまま使うため）
+* -text
