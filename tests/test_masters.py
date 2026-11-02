@@ -47,8 +47,8 @@ def test_read_csv_shift_jis_file_warns_instead_of_crashing(tmp_path):
 
 def test_default_times():
     times = m.default_times()
-    assert times[0] == "6:00" and times[1] == "6:30" and times[-1] == "22:00"
-    assert len(times) == 33
+    assert times[0] == "6:00" and times[1] == "6:30" and times[35] == "23:30" and times[36] == "0:00" and times[-1] == "5:30"
+    assert len(times) == 48 and len(set(times)) == 48
 
 
 def test_load_all_and_times_file_created(tmp_path):

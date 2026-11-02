@@ -14,6 +14,11 @@ test("formatRange", () => {
   assert.equal(formatRange("9:00", ""), "9:00～");
   assert.equal(formatRange("", "15:00"), "～15:00");
   assert.equal(formatRange("", ""), "");
+  assert.equal(formatRange("22:00", "6:00"), "22:00～翌6:00");
+  assert.equal(formatRange("23:30", "0:00"), "23:30～翌0:00");
+  assert.equal(formatRange("8:00", "8:00"), "8:00～8:00");
+  assert.equal(formatRange("0:00", "5:30"), "0:00～5:30");
+  assert.equal(formatRange("22:00", ""), "22:00～");
 });
 
 test("contactText", () => {

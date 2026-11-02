@@ -1,6 +1,10 @@
 export function formatRange(start, end) {
   if (!start && !end) return "";
-  return `${start}～${end}`;
+  // 終了が開始より早いときは、夜勤・徹夜で日をまたぐので「翌」を付ける（22:00～翌6:00）
+  const s = toMinutes(start);
+  const e = toMinutes(end);
+  const nextDay = !Number.isNaN(s) && !Number.isNaN(e) && e < s;
+  return `${start}～${nextDay ? "翌" : ""}${end}`;
 }
 
 // 休日出勤予定の表: 空の欄は「―」で表す（保存する値は空のまま）

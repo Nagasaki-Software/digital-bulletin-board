@@ -134,7 +134,8 @@ def load_item_folder(data_dir, folder, columns, kind):
 
 
 def default_times():
-    return [f"{h}:{mi:02d}" for h in range(6, 22) for mi in (0, 30)] + ["22:00"]
+    # 夜勤・徹夜に対応するため24時間分。日勤の時刻が先頭に来るよう、6:00 から 23:30、続けて 0:00 から 5:30 の順
+    return [f"{h}:{mi:02d}" for h in [*range(6, 24), *range(0, 6)] for mi in (0, 30)]
 
 
 def parse_date(text):
