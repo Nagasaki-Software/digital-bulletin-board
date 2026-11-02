@@ -15,6 +15,9 @@ logger = logging.getLogger("digital_bulletin_board.config")  # 出力先は app.
 
 DEFAULTS = {
     "company_name": "サンプル工業(株)",
+    "manager_title": "",
+    "manager_name": "",
+    "manager_phone": "",
     "default_theme": "light",
     "default_edit_button": "off",
     "accident_folder": "accident_cases",
@@ -32,6 +35,9 @@ DEFAULTS = {
     "links": {"items": [], "max_stay_seconds": 300},
     "standby": {"start": "18:00", "end": "08:00", "wake_idle_seconds": 300},
     "custom_holidays_file": "data/custom_holidays.csv",
+    "whiteboard_save_folder": "whiteboard",
+    "whiteboard_pdf_folder": "whiteboard_pdfs",
+    "whiteboard_idle_seconds": 180,
     "server": {"host": "0.0.0.0", "port": 5100},  # 起動時に1回だけ読む（変えたら再起動）
 }
 
@@ -44,6 +50,8 @@ MAX_LINKS = 2
 MAX_URL = 500
 MIN_STAY = 60
 MAX_STAY = 3600
+MIN_WB_IDLE = 30
+MAX_WB_IDLE = 3600
 MAX_PATH = 260  # フォルダの場所（ネットワークの共有などは長くなる）
 BROKEN_CONFIG_MESSAGE = "config.json に書き間違いがあります。直してから保存してください"
 BACKUP_KEEP = 5
@@ -66,6 +74,14 @@ def _text(v, limit=MAX_TEXT):
         return _BAD
     v = v.strip()
     return v if v and len(v) <= limit and "\0" not in v else _BAD
+
+
+def _optional_text(v, limit=MAX_TEXT):
+    """空欄も正しい文字（全体責任者・電話番号用）。"""
+    if not isinstance(v, str):
+        return _BAD
+    v = v.strip()
+    return v if len(v) <= limit and "\0" not in v else _BAD
 
 
 def _has_control(v):
@@ -103,6 +119,10 @@ def _port(v):
 
 def _stay(v):
     return v if isinstance(v, int) and not isinstance(v, bool) and MIN_STAY <= v <= MAX_STAY else _BAD
+
+
+def _wb_idle(v):
+    return v if isinstance(v, int) and not isinstance(v, bool) and MIN_WB_IDLE <= v <= MAX_WB_IDLE else _BAD
 
 
 def _url(v):
@@ -169,12 +189,18 @@ def load_config(path):
             target[key] = value
 
     take(user, "company_name", "company_name", _text, cfg)
+    take(user, "manager_title", "manager_title", _optional_text, cfg)
+    take(user, "manager_name", "manager_name", _optional_text, cfg)
+    take(user, "manager_phone", "manager_phone", _optional_text, cfg)
     take(user, "default_theme", "default_theme", _choice("light", "dark"), cfg)
     take(user, "default_edit_button", "default_edit_button", _choice("on", "off"), cfg)
     take(user, "accident_folder", "accident_folder", _path, cfg)
     take(user, "accident_seconds", "accident_seconds", _seconds, cfg, "秒")
     take(user, "edit_lock_seconds", "edit_lock_seconds", _seconds, cfg, "秒")
     take(user, "custom_holidays_file", "custom_holidays_file", _file_path, cfg)
+    take(user, "whiteboard_save_folder", "whiteboard_save_folder", _path, cfg)
+    take(user, "whiteboard_pdf_folder", "whiteboard_pdf_folder", _path, cfg)
+    take(user, "whiteboard_idle_seconds", "whiteboard_idle_seconds", _wb_idle, cfg, "秒")
 
     if "documents" in user:
         docs = user["documents"]
@@ -260,6 +286,17 @@ def _clean_links(raw, name, warnings):
     return items[:MAX_LINKS]
 
 
+def _manager_field(v, label):
+    if not isinstance(v, str):
+        raise ValueError(f"{label}は文字で入力してください")
+    v = v.strip()
+    if len(v) > MAX_TEXT:
+        raise ValueError(f"{label}は{MAX_TEXT}文字以内で入力してください")
+    if _has_control(v):
+        raise ValueError(f"{label}に使えない文字（改行・制御文字など）が含まれています")
+    return v
+
+
 def _company_name(v):
     if not isinstance(v, str):
         raise ValueError("会社名は文字で入力してください")
@@ -313,6 +350,9 @@ def clean_admin_settings(body):
     clean = {"documents": {"buttons": buttons}, "telop": telop}
     if "company_name" in body:  # 送られなければ、いまの会社名のまま
         clean["company_name"] = _company_name(body["company_name"])
+    for key, label in (("manager_title", "役職"), ("manager_name", "氏名"), ("manager_phone", "電話番号")):
+        if key in body:  # 送られなければ、いまのまま（古い画面でも使える）
+            clean[key] = _manager_field(body[key], label)
     # 以下は送られてきた項目だけを確かめる（送られなければ、いまの設定のまま。古い画面でも使える）
     if "idle_return_seconds" in docs:
         clean["documents"]["idle_return_seconds"] = _admin_seconds(docs["idle_return_seconds"], "文書の操作なし戻り（秒）")
@@ -342,6 +382,14 @@ def clean_admin_settings(body):
         if _file_path(path) is _BAD:
             raise ValueError("会社の休日ファイルに「..」は使えません")
         clean["custom_holidays_file"] = path
+    for key, label in (("whiteboard_save_folder", "ホワイトボードの保存フォルダ"), ("whiteboard_pdf_folder", "ホワイトボードの背景用PDFフォルダ")):
+        if key in body:
+            clean[key] = _admin_folder(body[key], label, DEFAULTS[key])
+    if "whiteboard_idle_seconds" in body:
+        n = _wb_idle(body["whiteboard_idle_seconds"])
+        if n is _BAD:
+            raise ValueError(f"ホワイトボードの操作なし戻り（秒）は {MIN_WB_IDLE}〜{MAX_WB_IDLE} の整数で入力してください")
+        clean["whiteboard_idle_seconds"] = n
     if "links" in body:
         clean["links"] = _admin_links(body["links"])
     return clean
@@ -387,6 +435,17 @@ def _admin_seconds(v, label):
     if n is _BAD:
         raise ValueError(f"{label}は 1〜{MAX_SECONDS} の数で入力してください")
     return n
+
+
+def _admin_folder(v, label, default):
+    if not isinstance(v, str):
+        raise ValueError(f"{label}は文字で入力してください")
+    v = v.strip() or default  # 空欄は既定の場所
+    if _path(v) is _BAD:
+        raise ValueError(f"{label}を正しく入力してください（{MAX_PATH}文字以内）")
+    if ".." in re.split(r"[\\/]+", v):
+        raise ValueError(f"{label}に「..」は使えません")
+    return v
 
 
 def _backup_config(path):
@@ -442,11 +501,14 @@ def save_admin_settings(path, clean):
     data["telop"]["speed"] = clean["telop"]["speed"]
     if "company_name" in clean:
         data["company_name"] = clean["company_name"]
+    for key in ("manager_title", "manager_name", "manager_phone"):
+        if key in clean:
+            data[key] = clean[key]
     if "folder" in clean["telop"]:
         data["telop"]["folder"] = clean["telop"]["folder"]
     if "idle_return_seconds" in clean["documents"]:
         data["documents"]["idle_return_seconds"] = clean["documents"]["idle_return_seconds"]
-    for key in ("accident_seconds", "edit_lock_seconds", "custom_holidays_file"):
+    for key in ("accident_seconds", "edit_lock_seconds", "custom_holidays_file", "whiteboard_save_folder", "whiteboard_pdf_folder", "whiteboard_idle_seconds"):
         if key in clean:
             data[key] = clean[key]
     if clean.get("links"):

@@ -163,3 +163,26 @@ def test_accident_tag_and_counter_are_outside_the_frame(tmp_path):
     assert 'id="accident-tag"' in head and 'id="accident-count"' in head
     assert 'id="accident-tag"' not in frame and 'id="accident-count"' not in frame
     assert 'id="accident-bar"' in frame
+
+
+def test_empty_schedule_rows_add_a_row_and_open_the_picker(tmp_path):
+    js = create_app(tmp_path).test_client().get("/js/board.js").get_data(as_text=True)
+    assert "addRowAndEdit" in js and "FILLER_FIELDS" in js
+    # 責任者の欄は、先に所属・会社名が要るので、会社の選択窓を開く
+    assert 'FILLER_FIELDS = ["construction", "company", "company", "work", "times"]' in js
+
+
+def test_whiteboard_is_served_and_wired(tmp_path):
+    c = create_app(tmp_path).test_client()
+    for path in ["/js/whiteboard.js", "/js/whiteboard-core.mjs"]:
+        assert c.get(path).status_code == 200, path
+    html = c.get("/").get_data(as_text=True)
+    for ident in ["wb-open", "whiteboard", "wb-bar", "wb-stage", "wb-bg-canvas", "wb-ink", "wb-preview", "wb-text", "wb-undo", "wb-redo", "wb-clear", "wb-bg", "wb-save", "wb-close", "wb-warn", "wb-continue", "wb-msg", "wb-save-folder", "wb-pdf-folder", "wb-idle-seconds"]:
+        assert f'id="{ident}"' in html, ident
+    board = c.get("/js/board.js").get_data(as_text=True)
+    assert "initWhiteboard" in board and "setWhiteboardIdle(state.settings.whiteboard_idle_seconds)" in board
+    assert "setBusyCheck(isWhiteboardOpen)" in board
+    assert "setBusyCheck" in c.get("/js/standby.js").get_data(as_text=True)
+    admin = c.get("/js/admin-settings.js").get_data(as_text=True)
+    for ident in ["wb-save-folder", "wb-pdf-folder", "wb-idle-seconds", "whiteboard_idle_seconds"]:
+        assert ident in admin, ident

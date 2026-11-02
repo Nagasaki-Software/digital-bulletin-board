@@ -5,7 +5,8 @@ import { setPlaylist, setSeconds, pause as pauseAccident, resume as resumeAccide
 import { renderDocButtons, closeDocuments } from "./documents.js";
 import { renderLinkButtons, closeLink, initLinks } from "./links.js";
 import { isEditable, initLock, setLockSeconds, setDefaultEditButton } from "./lock.js";
-import { initStandby, setStandbyConfig } from "./standby.js";
+import { initWhiteboard, isWhiteboardOpen, setWhiteboardIdle } from "./whiteboard.js";
+import { initStandby, setStandbyConfig, setBusyCheck } from "./standby.js";
 import { initTheme, setDefaultTheme } from "./theme.js";
 import { initClock } from "./clock.js";
 import { initTelop, updateTelop } from "./telop.js";
@@ -53,9 +54,32 @@ function actBtn(label, onClick, disabled = false, extraCls = "") {
   return b;
 }
 
+// 空白の行を押したら、行を1つ足して、押した欄の選択窓をそのまま開く（責任者の欄は先に所属・会社名が要るので、そちらを開く）
+const FILLER_FIELDS = ["construction", "company", "company", "work", "times"];
+let fillerBusy = false;
+async function addRowAndEdit(field) {
+  if (fillerBusy) return;
+  fillerBusy = true;
+  try {
+    const r = await api("POST", "/api/schedule");
+    await refresh();
+    const row = state.schedule.find(x => x.id === r.id);
+    if (!row) return;
+    if (field === "times") await editTimes(`/api/schedule/${row.id}`, row);
+    else await editSchedule(row, field);
+  } catch (e) {
+    showToast("保存できませんでした: " + e.message);
+  } finally {
+    fillerBusy = false;
+  }
+}
+
 function fillerRow() {
   const tr = el("tr");
-  for (let i = 0; i < 6; i++) tr.appendChild(td("", { cls: i === 5 ? "edit-only" : "" }));
+  for (let i = 0; i < 6; i++) {
+    const field = FILLER_FIELDS[i];
+    tr.appendChild(td("", { cls: i === 5 ? "edit-only" : "", onClick: field ? () => addRowAndEdit(field) : null }));
+  }
   return tr;
 }
 
@@ -103,6 +127,9 @@ function renderHeader() {
   if (m) title.append(m[1], el("span", "wd", m[2]));
   else title.textContent = state.date_label;
   $("company-name").textContent = state.company_name;
+  $("manager-name").textContent = [state.manager_title, state.manager_name].filter(Boolean).join("　");
+  $("manager-phone").textContent = state.manager_phone ? "電話　" + state.manager_phone : "";
+  $("manager").hidden = !$("manager-name").textContent && !state.manager_phone;
 }
 
 function renderNotices() {
@@ -203,6 +230,7 @@ function renderParts() {
   );
   renderDocButtons(state.doc_buttons, state.settings.documents_idle_seconds);
   renderLinkButtons(state.links);
+  setWhiteboardIdle(state.settings.whiteboard_idle_seconds);
   setLockSeconds(state.settings.edit_lock_seconds);
   setStandbyConfig(state.settings.standby);
   updateTelop(state.settings.telop);
@@ -381,6 +409,15 @@ initLinks({
   },
   onClose: resumeAccident,
 });
+// ホワイトボードを開いている間は、災害事例を止め、スリープに入らない（閉じて掲示板が見えてから災害事例を再開する）
+initWhiteboard({
+  onOpen: () => {
+    closeDocuments();
+    pauseAccident();
+  },
+  onClose: resumeAccident,
+});
+setBusyCheck(isWhiteboardOpen);
 // スリープに入るとき: 文書の閲覧・リンク先と設定メニューを閉じ、災害事例を止める
 initStandby(() => {
   closeDocuments();

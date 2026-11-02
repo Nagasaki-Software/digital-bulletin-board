@@ -22,10 +22,11 @@ from werkzeug.exceptions import HTTPException, InternalServerError
 import accident as acc
 import masters as mst
 import telop
+import whiteboard as wb
 from board_db import HOLIDAY_FIELDS, SCHEDULE_FIELDS, BoardDB
 from config import DEFAULTS, clean_admin_settings, load_config, save_admin_settings
 
-APP_VERSION = "0.2.1"  # 画面と /api/health に出す。版数の出どころはここだけ
+APP_VERSION = "0.3.0"  # 画面と /api/health に出す。版数の出どころはここだけ
 APP_ID = "digital-bulletin-board"  # /api/health に出す。起動.bat が、隣のポートの別アプリと見分けるのに使う
 PORT_FILE = "server_port.txt"  # 実際に使っているポート番号。起動.bat が読む
 ADMIN_KEY_FILE = "admin_key.txt"
@@ -189,6 +190,9 @@ def _changed_groups(old, clean):
         out.append(f"テロップフォルダ（{clean['telop']['folder']}）")
     if "company_name" in clean and clean["company_name"] != old["company_name"]:
         out.append("会社名")
+    for key, label in (("manager_title", "役職"), ("manager_name", "氏名"), ("manager_phone", "電話番号")):
+        if key in clean and clean[key] != old[key]:
+            out.append(label)
     for key, label in (("start", "スリープ開始"), ("end", "スリープ終了"), ("wake_idle_seconds", "スリープに戻る秒数")):
         if key in clean.get("standby", {}) and clean["standby"][key] != old["standby"][key]:
             out.append(f"{label}（{clean['standby'][key]}）")
@@ -200,6 +204,9 @@ def _changed_groups(old, clean):
         out.append(f"文書の操作なし戻り（{idle}）")
     if "custom_holidays_file" in clean and clean["custom_holidays_file"] != old["custom_holidays_file"]:
         out.append(f"会社の休日ファイル（{clean['custom_holidays_file']}）")
+    for key, label in (("whiteboard_save_folder", "ホワイトボードの保存フォルダ"), ("whiteboard_pdf_folder", "ホワイトボードの背景用PDFフォルダ"), ("whiteboard_idle_seconds", "ホワイトボードの操作なし戻り")):
+        if key in clean and clean[key] != old[key]:
+            out.append(f"{label}（{clean[key]}）")
     links = clean.get("links", {})
     if "items" in links and links["items"] != old["links"]["items"]:
         out.append(f"リンクボタン（{len(links['items'])}件）")  # 名前・アドレスはログに書かない
@@ -247,6 +254,8 @@ def create_app(base_dir=None, today_func=date.today, port=None, cfg=None, log_re
             accident_dir=_resolve(base, cfg["accident_folder"]),
             doc_buttons=doc_buttons, doc_dirs=[_resolve(base, b["folder"]) for b in doc_buttons],
             telop_dir=_resolve(base, cfg["telop"]["folder"]),
+            wb_save_dir=_resolve(base, cfg["whiteboard_save_folder"]),
+            wb_pdf_dir=_resolve(base, cfg["whiteboard_pdf_folder"]),
             # 会社の休日ファイル（読むだけ）。既定の場所のときは、無くても警告しない
             holidays_file=_resolve(base, cfg["custom_holidays_file"]),
             holidays_label=None if cfg["custom_holidays_file"] == DEFAULTS["custom_holidays_file"] else cfg["custom_holidays_file"],
@@ -258,6 +267,7 @@ def create_app(base_dir=None, today_func=date.today, port=None, cfg=None, log_re
         targets = [(r.accident_dir, "災害事例")]
         targets += [(d, f"文書「{b['label']}」") for b, d in zip(r.doc_buttons, r.doc_dirs)]
         targets.append((r.telop_dir, "お知らせ"))
+        targets.append((r.wb_pdf_dir, "ホワイトボードの背景PDF"))
         for folder, what in targets:
             try:
                 folder.mkdir(parents=True, exist_ok=True)
@@ -280,6 +290,7 @@ def create_app(base_dir=None, today_func=date.today, port=None, cfg=None, log_re
 
     app = Flask(__name__, static_folder=str(Path(__file__).resolve().parent / "static"), static_url_path="")
     app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
+    app.config["MAX_CONTENT_LENGTH"] = 120 * 1024 * 1024  # ホワイトボードの画像など。これより大きい本文は 413 で断る
     app.json.ensure_ascii = False
     app.config["ADMIN_KEY"] = admin_key  # 起動時に黒い窓へ出すためだけ。どの API にも載せない
 
@@ -300,6 +311,7 @@ def create_app(base_dir=None, today_func=date.today, port=None, cfg=None, log_re
         400: "リクエストが正しくありません",
         404: "見つかりません",
         405: "この操作はできません",
+        413: "送った内容が大きすぎます",
         500: "サーバーでエラーが起きました",
     }
 
@@ -425,10 +437,16 @@ def create_app(base_dir=None, today_func=date.today, port=None, cfg=None, log_re
                 },
                 "telop": {"speed": cfg["telop"]["speed"], "folder": cfg["telop"]["folder"]},
                 "company_name": cfg["company_name"],
+                "manager_title": cfg["manager_title"],
+                "manager_name": cfg["manager_name"],
+                "manager_phone": cfg["manager_phone"],
                 "standby": dict(cfg["standby"]),
                 "accident_seconds": cfg["accident_seconds"],
                 "edit_lock_seconds": cfg["edit_lock_seconds"],
                 "custom_holidays_file": cfg["custom_holidays_file"],
+                "whiteboard_save_folder": cfg["whiteboard_save_folder"],
+                "whiteboard_pdf_folder": cfg["whiteboard_pdf_folder"],
+                "whiteboard_idle_seconds": cfg["whiteboard_idle_seconds"],
                 "links": {"items": [dict(i) for i in cfg["links"]["items"]], "max_stay_seconds": cfg["links"]["max_stay_seconds"]},
             }
         )
@@ -501,10 +519,14 @@ def create_app(base_dir=None, today_func=date.today, port=None, cfg=None, log_re
                 "today": d,
                 "date_label": mst.day_title(today),
                 "company_name": cfg["company_name"],
+                "manager_title": cfg["manager_title"],
+                "manager_name": cfg["manager_name"],
+                "manager_phone": cfg["manager_phone"],
                 "settings": {
                     "accident_seconds": cfg["accident_seconds"],
                     "edit_lock_seconds": cfg["edit_lock_seconds"],
                     "documents_idle_seconds": cfg["documents"]["idle_return_seconds"],
+                    "whiteboard_idle_seconds": cfg["whiteboard_idle_seconds"],
                     "default_theme": cfg["default_theme"],
                     "default_edit_button": cfg["default_edit_button"],
                     "standby": cfg["standby"],
@@ -689,6 +711,61 @@ def create_app(base_dir=None, today_func=date.today, port=None, cfg=None, log_re
         if folder is None:
             return bad("文書ボタンがありません", 404)
         return send_listed_pdf(folder, name)
+
+    # ---- ホワイトボード ----
+    wb_lock = threading.Lock()
+
+    @app.get("/api/whiteboard/pdfs")
+    def api_wb_pdfs():
+        return jsonify(acc.list_pdfs(rt().wb_pdf_dir))
+
+    @app.get("/api/whiteboard/pdf/<path:name>")
+    def api_wb_pdf(name):
+        return send_listed_pdf(rt().wb_pdf_dir, name)
+
+    @app.get("/api/whiteboard/images")
+    def api_wb_images():
+        return jsonify(wb.list_images(rt().wb_pdf_dir))
+
+    @app.get("/api/whiteboard/image/<path:name>")
+    def api_wb_image(name):
+        if name not in wb.list_images(rt().wb_pdf_dir):
+            return bad("ファイルがありません", 404)
+        return send_from_directory(rt().wb_pdf_dir, name)
+
+    @app.get("/api/whiteboard/saved")
+    def api_wb_saved():
+        return jsonify(wb.list_saved(rt().wb_save_dir))
+
+    @app.get("/api/whiteboard/saved/<path:name>")
+    def api_wb_saved_file(name):
+        if name not in wb.list_saved(rt().wb_save_dir):
+            return bad("ファイルがありません", 404)
+        return send_from_directory(rt().wb_save_dir, name)
+
+    @app.post("/api/whiteboard/save")
+    def api_wb_save():
+        body = json_body()
+        if body is None:
+            return bad("保存の内容が正しくありません")
+        auto = body.get("auto", False)
+        if not isinstance(auto, bool):
+            return bad("保存の内容が正しくありません")
+        folder = rt().wb_save_dir
+        try:
+            images = body.get("images", [body.get("image")])
+            if not isinstance(images, list):
+                return bad("保存の内容が正しくありません")
+            jpegs = [wb.decode_image(t) for t in images]
+            with wb_lock:
+                name = wb.save_pdf(folder, jpegs, auto)
+        except wb.ImageError as e:
+            return bad(str(e))
+        except OSError as e:
+            log.error("ホワイトボードを保存できませんでした: %s（%s）", folder, e)
+            return bad(f"保存先に書き込めませんでした（{e.strerror or e}）", 500)
+        log.info("ホワイトボードを保存しました: %s", name)
+        return jsonify({"ok": True, "name": name})
 
     return app
 

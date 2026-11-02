@@ -23,10 +23,16 @@ def make(tmp_path, config=None):
 
 
 NEW_GET = {
+    "manager_title": "",
+    "manager_name": "",
+    "manager_phone": "",
     "standby": {"start": "18:00", "end": "08:00", "wake_idle_seconds": 300},
     "accident_seconds": 15,
     "edit_lock_seconds": 60,
     "custom_holidays_file": "data/custom_holidays.csv",
+    "whiteboard_save_folder": "whiteboard",
+    "whiteboard_pdf_folder": "whiteboard_pdfs",
+    "whiteboard_idle_seconds": 180,
     "links": {"items": [], "max_stay_seconds": 300},
 }
 
@@ -383,3 +389,30 @@ def test_unmakeable_telop_folder_saves_with_warning(tmp_path):
     assert j["ok"] is True and len(j["warnings"]) == 1 and "お知らせ" in j["warnings"][0] and "作れませんでした" in j["warnings"][0]
     assert c.get("/api/admin-settings").get_json()["telop"]["folder"] == "blocker/sub"
     assert c.get("/api/telop").get_json() == {"items": []}
+def test_manager_title_name_and_phone_are_saved_trimmed_and_shown_on_board(tmp_path):
+    c = make(tmp_path)
+    body = {**GOOD, "manager_title": " 工場長 ", "manager_name": "  山田 太郎 ", "manager_phone": "内線 1234 / 外線 03-0000-0000"}
+    assert c.post("/api/admin-settings", json=body).status_code == 200
+    saved = json.loads((tmp_path / "config.json").read_text(encoding="utf-8"))
+    assert saved["manager_title"] == "工場長" and saved["manager_name"] == "山田 太郎" and saved["manager_phone"] == "内線 1234 / 外線 03-0000-0000"
+    for got in (c.get("/api/board").get_json(), c.get("/api/admin-settings").get_json()):
+        assert got["manager_title"] == "工場長" and got["manager_name"] == "山田 太郎" and got["manager_phone"] == "内線 1234 / 外線 03-0000-0000"
+
+
+def test_manager_fields_can_be_cleared_and_are_kept_when_not_sent(tmp_path):
+    c = make(tmp_path, {"manager_title": "工場長", "manager_name": "山田", "manager_phone": "1234"})
+    assert c.post("/api/admin-settings", json=GOOD).status_code == 200  # 送らなければ、いまのまま
+    b = c.get("/api/board").get_json()
+    assert (b["manager_title"], b["manager_name"], b["manager_phone"]) == ("工場長", "山田", "1234")
+    assert c.post("/api/admin-settings", json={**GOOD, "manager_title": "", "manager_name": "", "manager_phone": ""}).status_code == 200
+    b = c.get("/api/board").get_json()
+    assert (b["manager_title"], b["manager_name"], b["manager_phone"]) == ("", "", "")
+
+
+@pytest.mark.parametrize("key,bad", [("manager_title", "a" * 101), ("manager_name", "a" * 101), ("manager_phone", "1\n2"), ("manager_title", "工\n場"), ("manager_name", 5), ("manager_phone", None)])
+def test_manager_fields_reject_bad_values(tmp_path, key, bad):
+    c = make(tmp_path)
+    before = cfg_bytes(tmp_path)
+    r = c.post("/api/admin-settings", json={**GOOD, key: bad})
+    assert r.status_code == 400
+    assert cfg_bytes(tmp_path) == before

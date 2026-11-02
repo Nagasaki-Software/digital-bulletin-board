@@ -1,6 +1,10 @@
 import { isStandbyTime } from "./timeutil.mjs";
 import { isLinkOpen } from "./links.js";
 
+let extraBusy = () => false; // ホワイトボードなど、links.js 以外で「操作中と見なす」画面があるとき
+export function setBusyCheck(fn) {
+  extraBusy = fn;
+}
 let cfg = { start: "18:00", end: "08:00", wake_idle_seconds: 300 };
 let lastActivity = -Infinity;
 let shown = false;
@@ -47,7 +51,7 @@ function tick() {
     else updateClock();
     return;
   }
-  if (isLinkOpen()) {
+  if (isLinkOpen() || extraBusy()) { // ホワイトボードも同じ（描いている間は、スリープに入らない）
     // リンク先の中の操作は、この画面には届かない。開いている間は操作中と見なし、閉じてから「操作なし」を数え直す
     lastActivity = Date.now();
     return;

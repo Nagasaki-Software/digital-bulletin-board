@@ -15,6 +15,9 @@ const SECONDS_FIELDS = [
   ["lock", "edit-lock-seconds", "編集の自動終了（秒）"],
 ];
 
+const WB_MIN_IDLE = 30;
+const WB_MAX_IDLE = 3600;
+
 // 別のPC（localhost 以外の宛先でこの画面を開いている）から保存するときだけ、管理者キーが要る
 const isRemote = !["localhost", "127.0.0.1", "[::1]", "::1"].includes(location.hostname);
 const KEY_STORE = "admin-key";
@@ -97,6 +100,9 @@ async function load() {
     $("telop-speed").value = String(s.telop.speed);
     $("telop-folder").value = s.telop.folder || "";
     $("company-input").value = s.company_name || "";
+    $("manager-title-input").value = s.manager_title || "";
+    $("manager-name-input").value = s.manager_name || "";
+    $("manager-phone-input").value = s.manager_phone || "";
     const sb = s.standby || {};
     $("sleep-start").value = sb.start || "";
     $("sleep-end").value = sb.end || "";
@@ -105,6 +111,9 @@ async function load() {
     $("doc-idle-seconds").value = s.documents.idle_return_seconds ?? "";
     $("edit-lock-seconds").value = s.edit_lock_seconds ?? "";
     $("holidays-file").value = s.custom_holidays_file || "";
+    $("wb-save-folder").value = s.whiteboard_save_folder || "";
+    $("wb-pdf-folder").value = s.whiteboard_pdf_folder || "";
+    $("wb-idle-seconds").value = s.whiteboard_idle_seconds ?? "";
     const ln = s.links || {};
     for (let i = 0; i < LINK_ROWS; i++) {
       const it = (ln.items || [])[i];
@@ -167,16 +176,27 @@ function collect() {
   if (stayRaw === "" || !Number.isInteger(stay) || stay < MIN_STAY || stay > MAX_STAY) {
     return { error: `リンクの最大滞在（秒）は ${MIN_STAY}〜${MAX_STAY} の整数で入力してください`, focus: $("link-stay") };
   }
+  const wbRaw = $("wb-idle-seconds").value.trim();
+  const wbIdle = Number(wbRaw);
+  if (wbRaw === "" || !Number.isInteger(wbIdle) || wbIdle < WB_MIN_IDLE || wbIdle > WB_MAX_IDLE) {
+    return { error: `ホワイトボードの操作なし戻り（秒）は ${WB_MIN_IDLE}〜${WB_MAX_IDLE} の整数で入力してください`, focus: $("wb-idle-seconds") };
+  }
   // テロップフォルダ・会社の休日ファイルが空欄なら、サーバーが既定の場所にする
   return {
     body: {
       company_name: company,
+      manager_title: $("manager-title-input").value.trim(),
+      manager_name: $("manager-name-input").value.trim(),
+      manager_phone: $("manager-phone-input").value.trim(),
       documents: { buttons, idle_return_seconds: seconds.idle },
       telop: { speed, folder: $("telop-folder").value.trim() },
       standby: { start, end, wake_idle_seconds: seconds.wake },
       accident_seconds: seconds.accident,
       edit_lock_seconds: seconds.lock,
       custom_holidays_file: $("holidays-file").value.trim(),
+      whiteboard_save_folder: $("wb-save-folder").value.trim(),
+      whiteboard_pdf_folder: $("wb-pdf-folder").value.trim(),
+      whiteboard_idle_seconds: wbIdle,
       links: { items: linkItems, max_stay_seconds: stay },
     },
   };
