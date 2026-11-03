@@ -7,6 +7,7 @@ from pathlib import Path
 
 MAX_IMAGE_BYTES = 30 * 1024 * 1024
 MAX_PAGES = 50
+MAX_SCHEDULE_DAYS = 62  # 工程表の日数の上限（これより長いと列が細くて書き込めない）
 PAGE_WIDTH_PT = 841.89  # A4 横の幅。高さは画像の縦横比で決める
 _SOF = (0xC0, 0xC1, 0xC2)  # 画像の大きさが書かれている印（ベースライン・拡張・プログレッシブ）
 

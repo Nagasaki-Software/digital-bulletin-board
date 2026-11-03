@@ -115,3 +115,27 @@ def test_save_many_pages_into_one_pdf(tmp_path):
     assert (tmp_path / "whiteboard" / r.get_json()["name"]).read_bytes().count(b"/Type /Page ") == 3
     for bad_body in ({"images": []}, {"images": "x"}, {"images": [img, "***"]}, {"images": [img] * 51}):
         assert c.post("/api/whiteboard/save", json=bad_body).status_code == 400, bad_body
+
+
+def test_schedule_days_marks_saturdays_sundays_and_holidays(tmp_path):
+    c = make(tmp_path)
+    (tmp_path / "data" / "custom_holidays.csv").write_text("date,name\n2026-11-05,創立記念日\n", encoding="utf-8-sig")
+    days = c.get("/api/whiteboard/schedule-days?start=2026-10-30&end=2026-11-05").get_json()
+    assert days == [
+        {"date": "2026-10-30", "kind": ""},
+        {"date": "2026-10-31", "kind": "saturday"},
+        {"date": "2026-11-01", "kind": "holiday"},  # 日曜
+        {"date": "2026-11-02", "kind": ""},
+        {"date": "2026-11-03", "kind": "holiday"},  # 文化の日
+        {"date": "2026-11-04", "kind": ""},
+        {"date": "2026-11-05", "kind": "holiday"},  # 会社の休日
+    ]
+
+
+def test_schedule_days_rejects_bad_ranges(tmp_path):
+    c = make(tmp_path)
+    assert len(c.get("/api/whiteboard/schedule-days?start=2026-11-01&end=2027-01-01").get_json()) == 62
+    for q in ("start=2026-11-02&end=2026-11-01", "start=2026-11-01&end=2027-01-02", "start=x&end=2026-11-01", "start=2026-11-01", ""):
+        r = c.get("/api/whiteboard/schedule-days?" + q)
+        assert r.status_code == 400, q
+        assert r.get_json()["error"]

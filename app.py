@@ -10,7 +10,7 @@ import sys
 import threading
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date
+from datetime import date, timedelta
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from types import SimpleNamespace
@@ -742,6 +742,22 @@ def create_app(base_dir=None, today_func=date.today, port=None, cfg=None, log_re
         if name not in wb.list_saved(rt().wb_save_dir):
             return bad("ファイルがありません", 404)
         return send_from_directory(rt().wb_save_dir, name)
+
+    @app.get("/api/whiteboard/schedule-days")
+    def api_wb_schedule_days():
+        try:
+            start = mst.parse_date(request.args.get("start", ""))
+            end = mst.parse_date(request.args.get("end", ""))
+        except ValueError:
+            return bad("期間の日付が正しくありません")
+        count = (end - start).days + 1
+        if count < 1:
+            return bad("終了日は開始日より後にしてください")
+        if count > wb.MAX_SCHEDULE_DAYS:
+            return bad(f"期間が長すぎます（{wb.MAX_SCHEDULE_DAYS}日まで）")
+        custom = masters.load_all()["custom_holidays"]
+        days = (start + timedelta(days=i) for i in range(count))
+        return jsonify([{"date": d.isoformat(), "kind": mst.holiday_info(d, custom)["kind"]} for d in days])
 
     @app.post("/api/whiteboard/save")
     def api_wb_save():

@@ -1,8 +1,8 @@
 import * as pdfjsLib from "/pdfjs/pdf.mjs";
 import { api } from "./api.js";
-import { pickOption, confirmBox, alertBox } from "./picker.js";
+import { pickOption, confirmBox, alertBox, inputPeriod } from "./picker.js";
 import { createStayTimer } from "./links.js";
-import { COLORS, WIDTHS, TEXT_SIZES, ERASER_SCALE, createHistory, normRect, arrowHead, thin, formatStamp } from "./whiteboard-core.mjs";
+import { COLORS, WIDTHS, TEXT_SIZES, ERASER_SCALE, STAMPS, createHistory, normRect, arrowHead, thin, formatStamp, addDays, monthGroups, scheduleLayout, stampSize } from "./whiteboard-core.mjs";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.mjs";
 
@@ -14,6 +14,8 @@ const SAVE_TIMEOUT_MS = 120000;
 const LOAD_TIMEOUT_MS = 20000;
 const MAX_PAGES = 50; // サーバー（whiteboard.py）の上限と同じ
 const NO_BACKGROUND = "__none__";
+const SCHEDULE_NAME = "工程表";
+const SCHEDULE_DEFAULT_DAYS = 24;
 const FONT = '"Meiryo", "メイリオ", "Yu Gothic UI", sans-serif';
 
 let idleSeconds = 180;
@@ -23,7 +25,8 @@ let hooks = { onOpen() {}, onClose() {} };
 let tool = "pen";
 let color = COLORS[0];
 let widthIdx = 1;
-// ページごとの記録。背景は pdf のページ番号（pageNo）か写真（img）。page は PDF のページを読み込んだもの
+let stamp = STAMPS[0];
+// ページごとの記録。背景は pdf のページ番号（pageNo）か写真（img）か工程表（schedule）。page は PDF のページを読み込んだもの
 let pages = [newPage(0, null)];
 let cur = 0;
 let saved = true; // 開いた直後、または最後の保存のあとに描き足していない
@@ -37,8 +40,8 @@ let drag = null; // 描いている最中の指（1本だけ見る）: { id, sta
 let textAt = null; // 文字入力中の場所: { x, y, size, color }
 let lastActivity = 0;
 
-function newPage(pageNo, img, history = createHistory()) {
-  return { history, pageNo, img, page: null };
+function newPage(pageNo, img, history = createHistory(), schedule = null) {
+  return { history, pageNo, img, page: null, schedule };
 }
 
 const H = () => pages[cur].history;
@@ -148,6 +151,7 @@ function drawOp(ctx, op) {
       break;
     case "line":
     case "arrow":
+      if (op.type === "line" && op.width === WIDTHS[WIDTHS.length - 1]) ctx.lineCap = "butt"; // 帯の直線は端を角にする（工程表の期間をマス目に合わせる）
       ctx.beginPath();
       ctx.moveTo(op.x1, op.y1);
       ctx.lineTo(op.x2, op.y2);
@@ -167,6 +171,17 @@ function drawOp(ctx, op) {
       ctx.ellipse(op.x + op.w / 2, op.y + op.h / 2, Math.max(op.w / 2, 0.5), Math.max(op.h / 2, 0.5), 0, 0, Math.PI * 2);
       ctx.stroke();
       break;
+    case "stamp": {
+      // 字の形は印ごとに大きさがばらつくので、実際の形の縦横の長いほうを op.size に合わせ、押した所を形の真ん中にする
+      ctx.font = `100px ${FONT}`;
+      const m = ctx.measureText(op.text);
+      const k = op.size / Math.max(m.actualBoundingBoxAscent + m.actualBoundingBoxDescent, m.actualBoundingBoxLeft + m.actualBoundingBoxRight, 1);
+      ctx.font = `${100 * k}px ${FONT}`;
+      ctx.fillText(op.text,
+        op.x - ((m.actualBoundingBoxRight - m.actualBoundingBoxLeft) / 2) * k,
+        op.y + ((m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2) * k);
+      break;
+    }
     case "text":
       ctx.font = `${op.size}px ${FONT}`;
       ctx.textBaseline = "top";
@@ -194,12 +209,78 @@ function sizeCanvases() {
   }
 }
 
+const SCHEDULE_COLORS = { saturday: "#9FC5E8", holiday: "#EA9999" };
+
+// 工程表を canvas（実際の画素の大きさ）に描く。消しゴムは描いた層だけを消すので、これは消えない
+function drawSchedule(ctx, w, h, { days, stamp }) {
+  const L = scheduleLayout(w, h, days.length);
+  const x0 = L.left + L.itemW + L.personW; // 日付の列の左端
+  const right = L.left + L.width;
+  const bottom = L.top + L.height;
+  const yDay = L.top + L.headH; // 日の段の上
+  const yBody = L.top + 2 * L.headH; // 枠の行の上
+  const dayX = i => x0 + i * L.dayW;
+  ctx.save();
+  days.forEach((d, i) => {
+    const fill = SCHEDULE_COLORS[d.kind];
+    if (!fill) return;
+    ctx.fillStyle = fill;
+    ctx.fillRect(dayX(i), yDay, L.dayW, bottom - yDay);
+  });
+  ctx.strokeStyle = "#333333";
+  ctx.lineWidth = Math.max(1, h / 900);
+  const line = (xa, ya, xb, yb) => {
+    ctx.beginPath();
+    ctx.moveTo(xa, ya);
+    ctx.lineTo(xb, yb);
+    ctx.stroke();
+  };
+  ctx.strokeRect(L.left, L.top, L.width, L.height);
+  line(L.left + L.itemW, L.top, L.left + L.itemW, bottom);
+  line(x0, L.top, x0, bottom);
+  const groups = monthGroups(days);
+  const monthStarts = new Set(groups.map(g => g.from));
+  for (let i = 1; i < days.length; i++) line(dayX(i), monthStarts.has(i) ? L.top : yDay, dayX(i), bottom);
+  line(x0, yDay, right, yDay);
+  for (let r = 0; r < L.rows; r++) {
+    const y = yBody + r * L.rowH;
+    line(L.left, y, right, y);
+  }
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#111827";
+  const headFont = Math.min(L.headH * 0.55, L.itemW * 0.12);
+  ctx.font = `${headFont}px ${FONT}`;
+  ctx.fillText("項　目", L.left + L.itemW / 2, L.top + L.headH);
+  ctx.fillText("担　当", L.left + L.itemW + L.personW / 2, L.top + L.headH);
+  for (const g of groups) {
+    const gw = g.count * L.dayW;
+    ctx.font = `${Math.min(L.headH * 0.55, gw / Math.max(2, g.label.length) * 0.9)}px ${FONT}`;
+    ctx.fillText(g.label, dayX(g.from) + gw / 2, L.top + L.headH / 2);
+  }
+  ctx.font = `${Math.min(L.headH * 0.55, L.dayW * 0.45)}px ${FONT}`;
+  days.forEach((d, i) => {
+    ctx.fillStyle = SCHEDULE_COLORS[d.kind] ? "#FFFFFF" : "#111827";
+    ctx.fillText(String(Number(d.date.slice(8))), dayX(i) + L.dayW / 2, yDay + L.headH / 2);
+  });
+  ctx.textAlign = "right";
+  ctx.textBaseline = "top";
+  ctx.fillStyle = "#111827";
+  ctx.font = `${h * 0.035}px ${FONT}`;
+  ctx.fillText(stamp, right, h * 0.03);
+  ctx.restore();
+}
+
 // pg の背景を canvas に描く。track=true は画面用（途中で別のページに替わったら描きかけをやめられる）
 async function drawBackground(canvas, pg, track) {
   const ctx = canvas.getContext("2d");
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = "#FFFFFF";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  if (pg.schedule) {
+    drawSchedule(ctx, canvas.width, canvas.height, pg.schedule);
+    return;
+  }
   if (pg.img) {
     const fit = Math.min(canvas.width / pg.img.naturalWidth, canvas.height / pg.img.naturalHeight);
     const w = pg.img.naturalWidth * fit;
@@ -352,10 +433,12 @@ stage.addEventListener("pointerdown", e => {
     startText(p);
     return;
   }
-  if (tool === "date") {
+  if (tool === "date" || tool === "stamp") {
     e.preventDefault();
     commitText();
-    const op = { type: "text", color, size: TEXT_SIZES[widthIdx], x: p[0], y: p[1], text: formatStamp(new Date()) };
+    const op = tool === "stamp"
+      ? { type: "stamp", color, size: stampSize(cssW, cssH, widthIdx, pages[cur].schedule?.days.length ?? 0), x: p[0], y: p[1], text: stamp }
+      : { type: "text", color, size: TEXT_SIZES[widthIdx], x: p[0], y: p[1], text: formatStamp(new Date()) };
     record(op);
     drawOp(ctxOf(ink), op);
     return;
@@ -427,7 +510,7 @@ function dropBackground() {
 }
 
 // 新しい背景に替える。ページ数が変わって描いた内容を捨てることになるときは、確かめる。替えたら true
-async function adoptBackground({ doc = null, img = null, name = "", count = 1 }) {
+async function adoptBackground({ doc = null, img = null, schedule = null, name = "", count = 1 }) {
   const keep = count === 1 && pages.length === 1 ? pages[0].history : null; // 1ページ→1ページなら、描いたものは残す
   if (!keep && anyInk() && !saved) {
     const ok = await confirmBox("背景を替えると、描いた内容は消えます。替えますか？", "替える");
@@ -442,7 +525,7 @@ async function adoptBackground({ doc = null, img = null, name = "", count = 1 })
   dropBackground();
   bgDoc = doc;
   bgName = name;
-  pages = Array.from({ length: count }, (_, i) => newPage(doc ? i + 1 : 0, img, i === 0 && keep ? keep : createHistory()));
+  pages = Array.from({ length: count }, (_, i) => newPage(doc ? i + 1 : 0, img, i === 0 && keep ? keep : createHistory(), schedule));
   cur = 0;
   replay();
   syncButtons();
@@ -485,6 +568,7 @@ async function chooseBackground() {
       { value: NO_BACKGROUND, label: "背景なし（白紙）" },
       { value: "pdf", label: "PDF" },
       { value: "photo", label: "写真" },
+      { value: "schedule", label: SCHEDULE_NAME },
       { value: "saved", label: "保存した内容の続きを書く" },
     ],
     current: bgName ? undefined : NO_BACKGROUND,
@@ -493,6 +577,10 @@ async function chooseBackground() {
   if (kind === undefined) return;
   if (kind === NO_BACKGROUND) {
     await adoptBackground({});
+    return;
+  }
+  if (kind === "schedule") {
+    await chooseSchedule();
     return;
   }
   const src = SOURCES[kind];
@@ -538,6 +626,22 @@ async function chooseBackground() {
     if (doc) doc.destroy();
     say("背景を読み込めません: " + e.message, true);
   }
+}
+
+// 期間を選んで、工程表を背景にする。日付ごとの土日・祝日はサーバーに聞く（会社の休日も含む）
+async function chooseSchedule() {
+  const d = new Date();
+  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const period = await inputPeriod({ title: "工程表の期間", start: today, end: addDays(today, SCHEDULE_DEFAULT_DAYS - 1) });
+  if (!period) return;
+  let days;
+  try {
+    days = await api("GET", `/api/whiteboard/schedule-days?start=${enc(period.start)}&end=${enc(period.end)}`);
+  } catch (e) {
+    await alertBox("工程表を作れません: " + e.message);
+    return;
+  }
+  await adoptBackground({ schedule: { days, stamp: formatStamp(new Date()) }, name: SCHEDULE_NAME });
 }
 
 // ---- 保存 ----
@@ -642,8 +746,14 @@ export function initWhiteboard({ onOpen, onClose }) {
     box.appendChild(b);
   }
   for (const b of document.querySelectorAll(".wb-tool")) {
-    b.addEventListener("click", () => {
+    b.addEventListener("click", async () => {
       commitText();
+      if (b.dataset.tool === "stamp") {
+        // 押すたびに印を選ぶ（閉じたら今の印のまま）
+        const s = await pickOption({ title: "スタンプ", options: STAMPS, current: stamp, allowClear: false });
+        if (s !== undefined) stamp = s;
+        b.textContent = "スタンプ " + stamp;
+      }
       tool = b.dataset.tool;
       syncButtons();
     });
@@ -673,6 +783,13 @@ export function initWhiteboard({ onOpen, onClose }) {
     say("保存しています…");
     try {
       const r = await doSave(false);
+      if (pages[0].schedule) {
+        pages = [newPage(0, null)]; // 工程表は保存したら、描いた内容ごと消して白紙に戻す
+        cur = 0;
+        await adoptBackground({});
+        say(`保存しました（${r.name}）。工程表を消しました`);
+        return;
+      }
       say(`保存しました（${r.name}）`);
     } catch (e) {
       say("保存できませんでした: " + e.message, true);

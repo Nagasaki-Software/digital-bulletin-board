@@ -74,6 +74,26 @@ export function inputText({ title, value = "", flagLabel = "", flag = false }) {
   });
 }
 
+// 開始日と終了日（"2026-11-03" の形）を選ぶ。キャンセルなら undefined
+export function inputPeriod({ title, start, end }) {
+  return open((panel, close) => {
+    panel.appendChild(el("h3", "", title));
+    const inputs = [["開始日", start], ["終了日", end]].map(([label, value]) => {
+      const line = el("label", "field-line");
+      const input = el("input");
+      input.type = "date";
+      input.value = value;
+      line.append(el("span", "", label), input);
+      panel.appendChild(line);
+      return input;
+    });
+    const actions = el("div", "panel-actions");
+    actions.appendChild(btn("キャンセル", "opt", () => close(undefined)));
+    actions.appendChild(btn("決定", "opt current", () => close({ start: inputs[0].value, end: inputs[1].value })));
+    panel.appendChild(actions);
+  });
+}
+
 export function confirmBox(message, okLabel = "はい") {
   return open((panel, close) => {
     panel.appendChild(el("h3", "", message));

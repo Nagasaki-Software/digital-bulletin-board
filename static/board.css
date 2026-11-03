@@ -184,6 +184,8 @@ tbody tr:nth-child(even) td { background: var(--row-alt); }
 .field-line input[type=number] { width: 8rem; height: 3.4rem; padding: .4rem; font-size: 1.6rem; text-align: center; color: #0F172A;
                                  background: #FFFFFF; border: 2px solid var(--btn-border); border-radius: .4rem;
                                  user-select: text; -webkit-user-select: text; }
+.field-line input[type=date] { height: 3.4rem; padding: .4rem; font-size: 1.6rem; color: #0F172A; background: #FFFFFF;
+                               border: 2px solid var(--btn-border); border-radius: .4rem; }
 .field-line .f-time { width: 12rem; height: 3.4rem; padding: .4rem; font-size: 1.6rem; text-align: center; color: #0F172A;
                       background: #FFFFFF; border: 2px solid var(--btn-border); border-radius: .4rem;
                       user-select: text; -webkit-user-select: text; }
