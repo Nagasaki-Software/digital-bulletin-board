@@ -11,7 +11,7 @@ def client(tmp_path):
 
 def test_app_version_is_semver_and_0_2_0():
     assert re.fullmatch(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)", APP_VERSION)
-    assert APP_VERSION == "0.3.0"
+    assert APP_VERSION == "0.4.0"
 
 
 def test_health_returns_version_and_is_cheap(tmp_path):
@@ -45,7 +45,7 @@ def test_version_has_one_source_and_overlay_shows_it_from_health(tmp_path):
     settings = html[html.index('id="settings"'):html.index('id="standby"')]
     assert 'id="app-version-line"' in settings and 'id="app-version"' in settings
     line = settings[settings.index('id="app-version-line"'):]
-    assert "hidden" in line[:80] and "バージョン" in line and "0.3.0" not in settings  # 画面に版数を直書きしない
+    assert "hidden" in line[:80] and "バージョン" in line and "0.4.0" not in settings  # 画面に版数を直書きしない
     js = c.get("/js/admin-settings.js").get_data(as_text=True)
-    assert "/api/health" in js and "0.3.0" not in js
+    assert "/api/health" in js and "0.4.0" not in js
     assert settings.index("閉じる") < settings.index("バージョン")  # 一番下に出す
