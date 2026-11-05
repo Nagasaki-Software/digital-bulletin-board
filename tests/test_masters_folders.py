@@ -275,7 +275,7 @@ def test_old_files_are_ignored_and_never_warned_about(tmp_path):
 
 def test_load_all_keeps_its_keys(tmp_path):
     data = load(tmp_path)
-    assert set(data) == {"companies", "leaders", "works", "constructions", "construction_works", "genres", "times", "custom_holidays", "warnings"}
+    assert set(data) == {"companies", "leaders", "works", "constructions", "construction_works", "genres", "times", "equipment", "custom_holidays", "warnings"}
 
 
 # ---- signature ----

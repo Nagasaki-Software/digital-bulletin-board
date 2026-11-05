@@ -36,7 +36,7 @@ export function contactText(ext, outside) {
   const parts = [];
   if (ext) parts.push("内線 " + ext);
   if (outside) parts.push("外線 " + outside);
-  return parts.join(" / ");
+  return parts.join("\n");
 }
 
 // "7:30" / "07:30" を分に直す。形式が違う・文字列でないときは NaN

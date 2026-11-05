@@ -13,7 +13,9 @@ WEEKDAYS = "月火水木金土日"
 FILES = {
     "genres": ("genres.csv", ["name"]),
     "times": ("times.csv", ["time"]),
+    "equipment": ("equipment.csv", ["name"]),
 }
+DEFAULT_EQUIPMENT = ["コンプレッサ", "クレーン", "フォークリフト", "高所作業車"]  # equipment.csv が無いときに作る見本
 CUSTOM_HOLIDAYS = "custom_holidays.csv"
 # 会社・工事件名は「1ファイル = 1項目」のフォルダ。ファイル名（.csv を除く）が会社名・工事件名になる。
 # 列は (取り込み後の名前, 見出しの書き方...)。最初の列だけが必須
@@ -200,6 +202,10 @@ class Masters:
         if not times.exists():
             with open(times, "w", encoding="utf-8-sig", newline="") as f:
                 f.write("time\n" + "\n".join(default_times()) + "\n")
+        equipment = self.dir / FILES["equipment"][0]
+        if not equipment.exists():  # 前の版から入れ替えた人の data にも、見本の機器一覧を用意する
+            with open(equipment, "w", encoding="utf-8-sig", newline="") as f:
+                f.write("name\n" + "\n".join(DEFAULT_EQUIPMENT) + "\n")
 
     def load_all(self):
         companies, leaders, warnings = load_companies(self.dir)
@@ -222,6 +228,7 @@ class Masters:
             "construction_works": construction_works,
             "genres": [r["name"] for r in loaded["genres"]],
             "times": [r["time"] for r in loaded["times"]],
+            "equipment": [r["name"] for r in loaded["equipment"]],
             "custom_holidays": custom,
             "warnings": warnings,
         }

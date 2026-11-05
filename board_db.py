@@ -4,7 +4,9 @@ from contextlib import contextmanager
 SCHEDULE_FIELDS = ("company", "leader", "work", "start_time", "end_time", "construction")
 HOLIDAY_FIELDS = ("date", "person", "work", "start_time", "end_time", "construction")
 NOTICE_FIELDS = ("text", "red")
+EQUIPMENT_FIELDS = ("equipment", "company", "user", "start_time", "end_time")
 MIN_NOTICES = 3
+EQUIPMENT_ROWS = 2  # 機器使用予定は、毎日この行数の空の行から始める（前の日の内容は引き継がない）
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value INTEGER NOT NULL);
@@ -28,6 +30,11 @@ CREATE TABLE IF NOT EXISTS holiday_rows(
     start_time TEXT NOT NULL DEFAULT '', end_time TEXT NOT NULL DEFAULT '',
     construction TEXT NOT NULL DEFAULT '');
 CREATE TABLE IF NOT EXISTS holiday_seeded(date TEXT PRIMARY KEY);
+CREATE TABLE IF NOT EXISTS equipment_rows(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, position INTEGER NOT NULL,
+    equipment TEXT NOT NULL DEFAULT '', company TEXT NOT NULL DEFAULT '', user TEXT NOT NULL DEFAULT '',
+    start_time TEXT NOT NULL DEFAULT '', end_time TEXT NOT NULL DEFAULT '');
+CREATE TABLE IF NOT EXISTS equipment_seeded(date TEXT PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS checked_genres(
     date TEXT NOT NULL, genre TEXT NOT NULL, PRIMARY KEY(date, genre));
 """
@@ -110,6 +117,14 @@ class BoardDB:
                     [(d, i) for i in range(1, MIN_NOTICES + 1)],
                 )
                 c.execute("UPDATE days SET notices_initialized = 1 WHERE date = ?", (d,))
+                changed = True
+            if c.execute("INSERT OR IGNORE INTO equipment_seeded(date) VALUES (?)", (d,)).rowcount:
+                # その日の最初の1回だけ: 前の日までの行を消して、空の行を用意する
+                c.execute("DELETE FROM equipment_rows WHERE date < ?", (d,))
+                c.executemany(
+                    "INSERT INTO equipment_rows(date, position) VALUES (?, ?)",
+                    [(d, i) for i in range(1, EQUIPMENT_ROWS + 1)],
+                )
                 changed = True
             if changed:
                 self._bump(c)
@@ -216,6 +231,40 @@ class BoardDB:
                 return False
             c.execute("UPDATE schedule_rows SET position = ? WHERE id = ?", (target, row_id))
             c.execute("UPDATE schedule_rows SET position = ? WHERE id = ?", (row["position"], other["id"]))
+            self._bump(c)
+            return True
+
+    # ---- 機器使用予定 ----
+    def list_equipment(self, d):
+        with self._tx(write=False) as c:
+            rows = c.execute("SELECT * FROM equipment_rows WHERE date = ? ORDER BY position", (d,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_equipment_row(self, row_id):
+        return self._get("equipment_rows", row_id)
+
+    def add_equipment_row(self, d):
+        with self._tx() as c:
+            pos = c.execute(
+                "SELECT COALESCE(MAX(position), 0) + 1 AS p FROM equipment_rows WHERE date = ?", (d,)
+            ).fetchone()["p"]
+            cur = c.execute("INSERT INTO equipment_rows(date, position) VALUES (?, ?)", (d, pos))
+            self._bump(c)
+            return cur.lastrowid
+
+    def update_equipment_row(self, row_id, fields):
+        return self._update("equipment_rows", EQUIPMENT_FIELDS, row_id, fields)
+
+    def delete_equipment_row(self, row_id):
+        with self._tx() as c:
+            row = c.execute("SELECT date, position FROM equipment_rows WHERE id = ?", (row_id,)).fetchone()
+            if not row:
+                return False
+            c.execute("DELETE FROM equipment_rows WHERE id = ?", (row_id,))
+            c.execute(
+                "UPDATE equipment_rows SET position = position - 1 WHERE date = ? AND position > ?",
+                (row["date"], row["position"]),
+            )
             self._bump(c)
             return True
 

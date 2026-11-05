@@ -24,7 +24,7 @@ test("formatRange", () => {
 test("contactText", () => {
   assert.equal(contactText("1234", ""), "内線 1234");
   assert.equal(contactText("", "03-0000-0001"), "外線 03-0000-0001");
-  assert.equal(contactText("1234", "03-0000-0001"), "内線 1234 / 外線 03-0000-0001");
+  assert.equal(contactText("1234", "03-0000-0001"), "内線 1234\n外線 03-0000-0001"); // 両方あるときは2行（番号の途中で折り返さない）
   assert.equal(contactText("", ""), "");
 });
 

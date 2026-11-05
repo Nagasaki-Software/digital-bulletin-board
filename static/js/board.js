@@ -13,6 +13,7 @@ import { initTelop, updateTelop } from "./telop.js";
 import { initAdminSettings } from "./admin-settings.js";
 
 const MIN_SCHEDULE_ROWS = 7;
+const MIN_EQUIPMENT_ROWS = 2;
 const MIN_HOLIDAY_ROWS = 2;
 const POLL_MS = 3000;
 const TOAST_MS = 6000;
@@ -183,6 +184,49 @@ function renderSchedule() {
   });
 }
 
+// 機器使用予定の空白の行を押したら、行を1つ足して、押した欄の選択窓を開く（使用者の欄は先に所属が要るので、所属を開く）
+const EQUIPMENT_FILLER_FIELDS = ["equipment", "company", "company", "times"];
+async function addEquipmentAndEdit(field) {
+  if (fillerBusy) return;
+  fillerBusy = true;
+  try {
+    const r = await api("POST", "/api/equipment");
+    await refresh();
+    const row = state.equipment.find(x => x.id === r.id);
+    if (!row) return;
+    if (field === "times") await editTimes(`/api/equipment/${row.id}`, row);
+    else await editEquipment(row, field);
+  } catch (e) {
+    showToast("保存できませんでした: " + e.message);
+  } finally {
+    fillerBusy = false;
+  }
+}
+
+function renderEquipment() {
+  keepScroll("equipment-wrap", () => {
+    const body = document.querySelector("#equipment tbody");
+    body.innerHTML = "";
+    for (const r of state.equipment) {
+      const tr = el("tr");
+      tr.appendChild(td(r.equipment, { cls: "b", onClick: () => editEquipment(r, "equipment") }));
+      tr.appendChild(td(r.company, { cls: "b", onClick: () => editEquipment(r, "company") }));
+      tr.appendChild(td(r.user, { cls: "b", onClick: () => editEquipment(r, "user") }));
+      tr.appendChild(td(formatRange(r.start_time, r.end_time), { cls: "b c", onClick: () => editTimes(`/api/equipment/${r.id}`, r) }));
+      const act = td("", { cls: "edit-only" });
+      act.appendChild(actBtn("✕", () => removeRow(`/api/equipment/${r.id}`)));
+      tr.appendChild(act);
+      body.appendChild(tr);
+    }
+    for (let i = state.equipment.length; i < MIN_EQUIPMENT_ROWS; i++) {
+      const tr = el("tr");
+      for (const field of EQUIPMENT_FILLER_FIELDS) tr.appendChild(td("", { onClick: () => addEquipmentAndEdit(field) }));
+      tr.appendChild(td("", { cls: "edit-only" }));
+      body.appendChild(tr);
+    }
+  });
+}
+
 function renderHolidays() {
   keepScroll("holiday-wrap", () => {
     const body = document.querySelector("#holidays tbody");
@@ -243,6 +287,7 @@ function render() {
   document.body.classList.toggle("locked", !isEditable());
   renderHeader();
   renderNotices();
+  renderEquipment();
   renderSchedule();
   renderGenres();
   renderHolidays();
@@ -325,6 +370,37 @@ async function editSchedule(row, field) {
   await save("PATCH", `/api/schedule/${row.id}`, { [field]: v });
 }
 
+async function editEquipment(row, field) {
+  const m = state.masters;
+  let options;
+  let title;
+  if (field === "equipment") {
+    options = m.equipment;
+    title = "機器";
+    if (!options.length) {
+      await alertBox("機器が登録されていません。data/equipment.csv に機器の名前を書いてください");
+      return;
+    }
+  } else if (field === "company") {
+    options = m.companies;
+    title = "所属";
+  } else {
+    if (!row.company) {
+      await alertBox("先に所属を選んでください");
+      return;
+    }
+    options = m.leaders.filter(l => l.company === row.company).map(l => l.leader_name);
+    if (!options.length) {
+      await alertBox("この所属の人は登録されていません");
+      return;
+    }
+    title = "使用者";
+  }
+  const v = await pickOption({ title, options, current: row[field] });
+  if (v === undefined) return;
+  await save("PATCH", `/api/equipment/${row.id}`, { [field]: v });
+}
+
 async function editHoliday(row, field) {
   const kinds = {
     person: { title: "氏名・会社名", options: state.masters.companies },
@@ -387,6 +463,11 @@ initClock();
 $("btn-add-notice").addEventListener("click", guarded(async () => {
   await save("POST", "/api/notices");
   const box = $("notices");
+  box.scrollTop = box.scrollHeight;
+}));
+$("btn-add-equipment").addEventListener("click", guarded(async () => {
+  await save("POST", "/api/equipment");
+  const box = $("equipment-wrap");
   box.scrollTop = box.scrollHeight;
 }));
 $("btn-add-schedule").addEventListener("click", guarded(() => save("POST", "/api/schedule")));

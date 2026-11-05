@@ -167,7 +167,7 @@ def test_board_exposes_the_map_and_nothing_else_changes(env, tmp_path):
     mas = board(c)["masters"]
     assert mas["construction_works"] == {"配管工事": ["組み立て作業"], "電気工事": ["配線工事", "組み立て作業"], "清掃工事": ["清掃"]}
     assert mas["works"] == ["清掃", "組み立て作業", "配線工事"]  # 作業内容の全体 = 各工事件名の作業内容を、ファイルの順に並べて重なりを除いたもの
-    assert set(mas) == {"companies", "leaders", "works", "constructions", "genres", "times", "construction_works"}
+    assert set(mas) == {"companies", "leaders", "works", "constructions", "genres", "times", "construction_works", "equipment"}
     c2 = create_app(tmp_path / "plain", today_func=lambda: date(2026, 11, 2)).test_client()
     assert board(c2)["masters"]["construction_works"] == {}
 

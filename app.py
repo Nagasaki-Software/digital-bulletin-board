@@ -23,10 +23,10 @@ import accident as acc
 import masters as mst
 import telop
 import whiteboard as wb
-from board_db import HOLIDAY_FIELDS, SCHEDULE_FIELDS, BoardDB
+from board_db import EQUIPMENT_FIELDS, HOLIDAY_FIELDS, SCHEDULE_FIELDS, BoardDB
 from config import DEFAULTS, clean_admin_settings, load_config, save_admin_settings
 
-APP_VERSION = "0.4.0"  # 画面と /api/health に出す。版数の出どころはここだけ
+APP_VERSION = "0.5.0"  # 画面と /api/health に出す。版数の出どころはここだけ
 APP_ID = "digital-bulletin-board"  # /api/health に出す。起動.bat が、隣のポートの別アプリと見分けるのに使う
 PORT_FILE = "server_port.txt"  # 実際に使っているポート番号。起動.bat が読む
 ADMIN_KEY_FILE = "admin_key.txt"
@@ -370,8 +370,10 @@ def create_app(base_dir=None, today_func=date.today, port=None, cfg=None, log_re
                 ok = value in m["constructions"]
             elif key in ("start_time", "end_time"):
                 ok = value in m["times"]
-            elif key == "leader":
+            elif key in ("leader", "user"):
                 ok = any(l["company"] == company and l["leader_name"] == value for l in m["leaders"])
+            elif key == "equipment":
+                ok = value in m["equipment"]
             else:
                 ok = False
             if not ok:
@@ -533,12 +535,13 @@ def create_app(base_dir=None, today_func=date.today, port=None, cfg=None, log_re
                     "telop": {"speed": cfg["telop"]["speed"]},
                 },
                 "notices": db.list_notices(d),
+                "equipment": db.list_equipment(d),
                 "schedule": schedule,
                 "holiday_rows": holiday_rows,
                 "week_holidays": week_holidays(m),
                 "checked_genres": checked,
                 "accident": [{"name": n, "url": "/api/accident/file/" + quote(n)} for n in names],
-                "masters": {k: m[k] for k in ("companies", "leaders", "works", "constructions", "genres", "times", "construction_works")},
+                "masters": {k: m[k] for k in ("companies", "leaders", "works", "constructions", "genres", "times", "construction_works", "equipment")},
                 "doc_buttons": [{"index": i, "label": b["label"]} for i, b in enumerate(cur.doc_buttons)],
                 "links": {"items": [dict(i) for i in cfg["links"]["items"]], "max_stay_seconds": cfg["links"]["max_stay_seconds"]},
                 "warnings": cur.warnings + m["warnings"],
@@ -579,6 +582,41 @@ def create_app(base_dir=None, today_func=date.today, port=None, cfg=None, log_re
         except ValueError as e:
             return bad(str(e))
         if not found:
+            return bad("行が見つかりません", 404)
+        return jsonify({"ok": True})
+
+    # ---- 機器使用予定（その日の行だけ。前の日の行は ensure_day で消える） ----
+    @app.post("/api/equipment")
+    def api_add_equipment():
+        return jsonify({"id": db.add_equipment_row(prepare())})
+
+    @app.patch("/api/equipment/<int:row_id>")
+    def api_patch_equipment(row_id):
+        d = prepare()
+        row = db.get_equipment_row(row_id)
+        if row is None or row["date"] != d:
+            return bad("行が見つかりません", 404)
+        body = json_body()
+        if body is None:
+            return bad("JSONオブジェクトが必要です")
+        fields = clean_fields(body, EQUIPMENT_FIELDS)
+        if fields is None:
+            return bad("値が文字列ではありません")
+        if not fields:
+            return bad("更新する項目がありません")
+        if "company" in fields and fields["company"] != row["company"] and "user" not in fields:
+            fields["user"] = ""
+        error = validate(masters.load_all(), fields, fields.get("company", row["company"]))
+        if error:
+            return bad(error)
+        db.update_equipment_row(row_id, fields)
+        return jsonify({"ok": True})
+
+    @app.delete("/api/equipment/<int:row_id>")
+    def api_delete_equipment(row_id):
+        d = prepare()
+        row = db.get_equipment_row(row_id)
+        if row is None or row["date"] != d or not db.delete_equipment_row(row_id):
             return bad("行が見つかりません", 404)
         return jsonify({"ok": True})
 
