@@ -23,6 +23,11 @@ let pending = false;
 let currentIndex = 0;
 let currentLabel = "";
 let pinch = null;
+const GRID_SIZE = 6;
+let folderFiles = [];
+let gridStart = 0;
+let fromGrid = false; // 1枚表示を 3×2 から開いたか（「戻る」の行き先）
+let gridJobs = []; // 3×2 の各マスの読み込み。切り替え・閉じるときに止める
 
 const wrap = $("doc-canvas-wrap");
 const msg = document.createElement("div");
@@ -70,14 +75,35 @@ function dropDoc() {
   wrap.scrollLeft = 0;
 }
 
-function loadDoc(url) {
+function openPdf(url) {
   const task = pdfjsLib.getDocument({ url, cMapUrl: "/pdfjs/cmaps/", cMapPacked: true });
-  loadTask = task;
   let tid;
   const timeout = new Promise((_, reject) => {
     tid = setTimeout(() => reject(new Error("読み込みがタイムアウトしました")), LOAD_TIMEOUT_MS);
   });
-  return Promise.race([task.promise, timeout]).finally(() => clearTimeout(tid));
+  return { task, promise: Promise.race([task.promise, timeout]).finally(() => clearTimeout(tid)) };
+}
+
+function loadDoc(url) {
+  const { task, promise } = openPdf(url);
+  loadTask = task;
+  return promise;
+}
+
+const pdfUrl = name => `/api/documents/${currentIndex}/pdf/${encodeURIComponent(name)}`;
+
+function cancelGrid() {
+  for (const j of gridJobs) {
+    if (j.task) j.task.destroy();
+    j.task = null;
+  }
+  gridJobs = [];
+  const grid = $("doc-grid");
+  for (const c of grid.querySelectorAll("canvas")) {
+    c.width = 0;
+    c.height = 0;
+  }
+  grid.innerHTML = "";
 }
 
 export function closeDocuments() {
@@ -85,6 +111,7 @@ export function closeDocuments() {
   token++;
   cancelLoad();
   dropDoc();
+  cancelGrid();
   pinch = null;
   $("documents").hidden = true;
 }
@@ -117,11 +144,15 @@ async function openFolder(index, label) {
   currentLabel = label;
   cancelLoad();
   dropDoc();
+  cancelGrid();
   pinch = null;
+  fromGrid = false;
+  folderFiles = [];
   $("documents").hidden = false;
   $("docs-title").textContent = label;
   $("docs-back").hidden = true;
   $("doc-viewer").hidden = true;
+  $("doc-grid-view").hidden = true;
   const list = $("doc-list");
   list.hidden = false;
   list.innerHTML = "";
@@ -139,6 +170,15 @@ async function openFolder(index, label) {
     list.textContent = failed ? "文書の一覧を読み込めません" : "文書がありません";
     return;
   }
+  folderFiles = files;
+  if (files.length > 1) {
+    const g = document.createElement("button");
+    g.type = "button";
+    g.className = "opt doc-grid-btn";
+    g.textContent = "6枚ずつ表示（3×2）";
+    g.addEventListener("click", () => showGrid(0));
+    list.appendChild(g);
+  }
   for (const name of files) {
     const b = document.createElement("button");
     b.type = "button";
@@ -149,11 +189,15 @@ async function openFolder(index, label) {
   }
 }
 
-async function openFile(name) {
+async function openFile(name, viaGrid = false) {
   const my = ++token;
+  cancelGrid();
+  fromGrid = viaGrid;
   $("doc-list").hidden = true;
+  $("doc-grid-view").hidden = true;
   $("doc-viewer").hidden = false;
   $("docs-back").hidden = false;
+  $("docs-back").textContent = viaGrid ? "戻る" : "一覧へ";
   $("docs-title").textContent = name.replace(/\.pdf$/i, "");
   $("doc-page").textContent = "読み込み中…";
   showMsg("");
@@ -164,7 +208,7 @@ async function openFile(name) {
   dropDoc();
   resetIdle();
   try {
-    const loaded = await loadDoc(`/api/documents/${currentIndex}/pdf/${encodeURIComponent(name)}`);
+    const loaded = await loadDoc(pdfUrl(name));
     if (my !== token) {
       // 読み込み中に別の表示へ切り替わった・閉じられた。後から届いた分は捨てる（失敗側は切替時の cancelLoad で止まっている）
       loaded.destroy();
@@ -232,6 +276,96 @@ async function renderPage() {
   }
 }
 
+// 3×2 表示。フォルダの一覧と同じ順に start 番目から6つを並べ、各ファイルの1ページ目だけを描く
+async function showGrid(start) {
+  const my = ++token;
+  cancelLoad();
+  dropDoc();
+  cancelGrid();
+  pinch = null;
+  fromGrid = false;
+  gridStart = start;
+  $("doc-list").hidden = true;
+  $("doc-viewer").hidden = true;
+  $("doc-grid-view").hidden = false;
+  $("docs-back").hidden = false;
+  $("docs-back").textContent = "一覧へ";
+  $("docs-title").textContent = currentLabel;
+  const shown = folderFiles.slice(start, start + GRID_SIZE);
+  $("grid-range").textContent = `${start + 1}〜${start + shown.length}枚目 / 全${folderFiles.length}枚`;
+  $("grid-prev").disabled = start === 0;
+  $("grid-next").disabled = start + GRID_SIZE >= folderFiles.length;
+  const grid = $("doc-grid");
+  const tiles = [];
+  for (let i = 0; i < GRID_SIZE; i++) {
+    const name = shown[i];
+    if (!name) {
+      const e = document.createElement("div");
+      e.className = "doc-tile empty";
+      grid.appendChild(e);
+      continue;
+    }
+    const t = document.createElement("button");
+    t.type = "button";
+    t.className = "doc-tile";
+    const page = document.createElement("div");
+    page.className = "tile-page";
+    page.textContent = "読み込み中…";
+    const cap = document.createElement("div");
+    cap.className = "tile-name";
+    cap.textContent = name.replace(/\.pdf$/i, "");
+    t.append(page, cap);
+    t.addEventListener("click", () => openFile(name, true));
+    grid.appendChild(t);
+    tiles.push([name, page]);
+  }
+  resetIdle();
+  // メモリを抑えるため1つずつ読む。描き終えた文書はすぐ手放し、絵（canvas）だけ残す
+  for (const [name, page] of tiles) {
+    if (my !== token) return;
+    await renderTile(name, page, my);
+  }
+}
+
+async function renderTile(name, box, my) {
+  const { task, promise } = openPdf(pdfUrl(name));
+  const job = { task };
+  gridJobs.push(job);
+  try {
+    const d = await promise;
+    if (my !== token) return;
+    const p = await d.getPage(1);
+    if (my !== token) return;
+    const base = p.getViewport({ scale: 1 });
+    const w = box.clientWidth;
+    const h = box.clientHeight;
+    if (!w || !h) throw new Error("マスの大きさが0です");
+    const vp = p.getViewport({ scale: Math.min(w / base.width, h / base.height) * 0.97 });
+    const ratio = Math.min(window.devicePixelRatio || 1,
+      Math.sqrt(MAX_CANVAS_PIXELS / GRID_SIZE / (vp.width * vp.height)));
+    const c = document.createElement("canvas");
+    c.width = Math.max(1, Math.floor(vp.width * ratio));
+    c.height = Math.max(1, Math.floor(vp.height * ratio));
+    c.style.width = vp.width + "px";
+    c.style.height = vp.height + "px";
+    const ctx = c.getContext("2d");
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    await p.render({ canvasContext: ctx, viewport: vp }).promise;
+    if (my !== token) return;
+    box.textContent = "";
+    box.appendChild(c);
+  } catch (e) {
+    if (my !== token) return;
+    console.error("文書の表示に失敗しました", name, e);
+    box.textContent = FAIL_NOTICE;
+  } finally {
+    if (job.task) {
+      job.task.destroy();
+      job.task = null;
+    }
+  }
+}
+
 function onRenderError(e) {
   console.error("文書の表示に失敗しました", e);
   $("doc-page").textContent = "";
@@ -248,7 +382,16 @@ function clampZoom(z) {
 }
 
 $("docs-close").addEventListener("click", closeDocuments);
-$("docs-back").addEventListener("click", () => openFolder(currentIndex, currentLabel));
+$("docs-back").addEventListener("click", () => {
+  if (fromGrid) showGrid(gridStart);
+  else openFolder(currentIndex, currentLabel);
+});
+$("grid-prev").addEventListener("click", () => {
+  if (gridStart > 0) showGrid(Math.max(0, gridStart - GRID_SIZE));
+});
+$("grid-next").addEventListener("click", () => {
+  if (gridStart + GRID_SIZE < folderFiles.length) showGrid(gridStart + GRID_SIZE);
+});
 $("doc-prev").addEventListener("click", () => {
   if (doc && pageNum > 1) {
     pageNum--;

@@ -82,7 +82,7 @@
           <table id="holidays">
             <thead><tr>
               <th class="c-date">日付</th><th class="c-constr">工事件名</th>
-              <th class="c-person">氏名・会社名</th>
+              <th class="c-person">所属・会社名</th><th class="c-leader">責任者</th>
               <th class="c-work">作業内容</th><th class="c-time">就業予定</th>
               <th class="c-act edit-only"></th>
             </tr></thead>
@@ -122,6 +122,14 @@
         <button id="doc-zoom-in" class="opt" type="button">＋</button>
       </div>
       <div id="doc-canvas-wrap"><canvas id="doc-canvas"></canvas></div>
+    </div>
+    <div id="doc-grid-view" hidden>
+      <div class="viewer-bar">
+        <button id="grid-prev" class="opt" type="button">◀</button>
+        <span id="grid-range"></span>
+        <button id="grid-next" class="opt" type="button">▶</button>
+      </div>
+      <div id="doc-grid"></div>
     </div>
   </div>
 

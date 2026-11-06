@@ -26,11 +26,14 @@ import whiteboard as wb
 from board_db import EQUIPMENT_FIELDS, HOLIDAY_FIELDS, SCHEDULE_FIELDS, BoardDB
 from config import DEFAULTS, clean_admin_settings, load_config, save_admin_settings
 
-APP_VERSION = "0.5.0"  # 画面と /api/health に出す。版数の出どころはここだけ
+APP_VERSION = "0.6.0"  # 画面と /api/health に出す。版数の出どころはここだけ
 APP_ID = "digital-bulletin-board"  # /api/health に出す。起動.bat が、隣のポートの別アプリと見分けるのに使う
 PORT_FILE = "server_port.txt"  # 実際に使っているポート番号。起動.bat が読む
 ADMIN_KEY_FILE = "admin_key.txt"
 PORT_TRIES = 10  # 設定のポート番号から +9 まで順に空きを探す
+# 表の欄のうち、選択肢に無い言葉を手入力できるもの（時刻と日付は選ぶだけ）
+FREE_TEXT_FIELDS = ("company", "person", "leader", "user", "work", "construction", "equipment")
+FREE_TEXT_MAX = 30
 LOOPBACK = ("127.0.0.1", "::1")
 LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "::1")  # 管理者キーが要らないのは、接続元が自分自身で、かつ宛先もこの名前のとき
 
@@ -359,21 +362,16 @@ def create_app(base_dir=None, today_func=date.today, port=None, cfg=None, log_re
         return fields
 
     def validate(m, fields, company):
+        # 時刻は登録リストから選ぶ。ほかの欄は、選択肢に無い言葉も手入力として保存する（30文字まで・1行）
         for key, value in fields.items():
             if value == "":
                 continue
-            if key in ("company", "person"):
-                ok = value in m["companies"]
-            elif key == "work":
-                ok = value in m["works"]
-            elif key == "construction":
-                ok = value in m["constructions"]
-            elif key in ("start_time", "end_time"):
+            if key in FREE_TEXT_FIELDS:
+                if len(value) > FREE_TEXT_MAX or any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+                    return f"{FREE_TEXT_MAX}文字までの1行で入力してください"
+                continue
+            if key in ("start_time", "end_time"):
                 ok = value in m["times"]
-            elif key in ("leader", "user"):
-                ok = any(l["company"] == company and l["leader_name"] == value for l in m["leaders"])
-            elif key == "equipment":
-                ok = value in m["equipment"]
             else:
                 ok = False
             if not ok:
@@ -381,15 +379,13 @@ def create_app(base_dir=None, today_func=date.today, port=None, cfg=None, log_re
         return None
 
     def apply_work_rule(m, fields, row):
-        """作業内容は、その行の工事件名に対応表の登録があるときは、そこから選ぶ（本日の作業予定・休日出勤予定で共通）。
-        合わなければ理由を返す。工事件名を変える要求で、保存済みの作業内容が新しい工事件名に合わないときは、同じ更新で空にする。"""
+        """作業内容の選択肢は、その行の工事件名に対応表の登録があるときは、そこに絞る（本日の作業予定・休日出勤予定で共通）。
+        手入力の作業内容は受け付ける。工事件名を変える要求で、保存済みの作業内容が新しい工事件名の選択肢に無いときは、同じ更新で空にする。"""
         allowed = m["construction_works"].get(fields.get("construction", row["construction"]))
         if not allowed:
             return None
-        if "work" in fields:
-            if fields["work"] and fields["work"] not in allowed:
-                return f"この工事件名では選べない作業内容です: {fields['work']}"
-        elif fields.get("construction", row["construction"]) != row["construction"] and row["work"] not in allowed:
+        # 作業内容を送ってきたときは、選択肢に無くても手入力として受け付ける
+        if "work" not in fields and fields.get("construction", row["construction"]) != row["construction"] and row["work"] not in allowed:
             fields["work"] = ""
         return None
 
@@ -496,15 +492,16 @@ def create_app(base_dir=None, today_func=date.today, port=None, cfg=None, log_re
         m = masters.load_all()
         monday, sunday = mst.week_range(today)
 
-        schedule = []
-        for r in db.list_schedule(d):
+        def add_contact(r, company):
             leader = next(
-                (l for l in m["leaders"] if l["company"] == r["company"] and l["leader_name"] == r["leader"]),
+                (l for l in m["leaders"] if l["company"] == company and l["leader_name"] == r["leader"]),
                 None,
             )
             r["ext"] = leader["ext"] if leader else ""
             r["outside"] = leader["outside"] if leader else ""
-            schedule.append(r)
+            return r
+
+        schedule = [add_contact(r, r["company"]) for r in db.list_schedule(d)]
 
         holiday_rows = []
         for r in db.list_holiday_rows(monday.isoformat(), sunday.isoformat()):
@@ -512,7 +509,7 @@ def create_app(base_dir=None, today_func=date.today, port=None, cfg=None, log_re
             info = mst.holiday_info(day, m["custom_holidays"])
             r["label"] = mst.date_label(day)
             r["kind"] = info["kind"]
-            holiday_rows.append(r)
+            holiday_rows.append(add_contact(r, r["person"]))
 
         checked = [g for g in db.get_checked_genres(d) if g in m["genres"]]
         names = acc.playlist(cur.accident_dir, m["genres"], set(checked))
@@ -691,13 +688,15 @@ def create_app(base_dir=None, today_func=date.today, port=None, cfg=None, log_re
         if not fields:
             return bad("更新する項目がありません")
         m = masters.load_all()
+        if "person" in fields and fields["person"] != row["person"] and "leader" not in fields:
+            fields["leader"] = ""
         if "date" in fields:
             if not is_week_holiday(fields["date"], m):
                 return bad("今週の休日ではありません")
             fields_to_check = {k: v for k, v in fields.items() if k != "date"}
         else:
             fields_to_check = fields
-        error = validate(m, fields_to_check, None) or apply_work_rule(m, fields, row)
+        error = validate(m, fields_to_check, fields.get("person", row["person"])) or apply_work_rule(m, fields, row)
         if error:
             return bad(error)
         db.update_holiday_row(row_id, fields)

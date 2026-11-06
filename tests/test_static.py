@@ -107,9 +107,10 @@ def test_empty_cells_show_a_bar_only_in_the_holiday_table(tmp_path):
     holidays = js[js.index("function renderHolidays"):js.index("function renderGenres")]
     assert "orDash" not in schedule and "formatRangeOrDash" not in schedule and "holidayTd" not in schedule
     assert "formatRange(r.start_time, r.end_time)" in schedule
-    assert holidays.count("holidayTd(") == 3 and "formatRangeOrDash(r.start_time, r.end_time)" in holidays
+    assert holidays.count("holidayTd(") == 4 and "formatRangeOrDash(r.start_time, r.end_time)" in holidays
     assert "formatRange(r.start_time" not in holidays.replace("formatRangeOrDash(", "")
     assert "td(r.construction" not in holidays and "td(r.person" not in holidays and "td(r.work" not in holidays
+    assert "td(r.leader" not in holidays
     assert 'import { formatRange, formatRangeOrDash, orDash, contactText, visibleHolidayRows, worksFor } from "./timeutil.mjs"' in js
     css = c.get("/board.css").get_data(as_text=True)
     assert "td.dash { color: var(--muted); }" in css
@@ -186,3 +187,40 @@ def test_whiteboard_is_served_and_wired(tmp_path):
     admin = c.get("/js/admin-settings.js").get_data(as_text=True)
     for ident in ["wb-save-folder", "wb-pdf-folder", "wb-idle-seconds", "whiteboard_idle_seconds"]:
         assert ident in admin, ident
+
+
+def test_free_text_limit_is_the_same_on_screen_and_server(tmp_path):
+    import app as app_module
+
+    js = create_app(tmp_path).test_client().get("/js/picker.js").get_data(as_text=True)
+    assert f"export const FREE_TEXT_MAX = {app_module.FREE_TEXT_MAX};" in js
+    assert "その他（手入力）" in js
+
+
+def test_documents_can_be_shown_six_at_a_time(tmp_path):
+    c = create_app(tmp_path).test_client()
+    html = c.get("/").get_data(as_text=True)
+    js = c.get("/js/documents.js").get_data(as_text=True)
+    css = c.get("/board.css").get_data(as_text=True)
+    for needle in ['id="doc-grid-view"', 'id="doc-grid"', 'id="grid-prev"', 'id="grid-next"', 'id="grid-range"']:
+        assert needle in html, needle
+    # 3×2 のマス・6枚ずつ・1ページ目だけ・マスを押すと1枚表示（戻ると 3×2）
+    assert "grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr" in css
+    assert "const GRID_SIZE = 6;" in js
+    assert "6枚ずつ表示（3×2）" in js
+    assert "d.getPage(1)" in js
+    assert "openFile(name, true)" in js and "if (fromGrid) showGrid(gridStart);" in js
+    # 閉じる・フォルダを開き直す・1枚表示へ切り替えるときに、読み込み中のマスを止める
+    assert js.count("cancelGrid();") >= 4
+
+
+def test_whiteboard_background_can_line_up_six_pdfs(tmp_path):
+    c = create_app(tmp_path).test_client()
+    js = c.get("/js/whiteboard.js").get_data(as_text=True)
+    assert 'const GRID_NAME = "PDFを6枚ずつ並べる（3×2）";' in js
+    assert "const GRID_COLS = 3;" in js and "const GRID_ROWS = 2;" in js
+    assert '{ value: "pdfgrid", label: GRID_NAME }' in js
+    # 7つ目からは次のページ。描いたPDFはすぐ閉じ、ページを替えたら描きかけをやめる
+    assert "names.slice(i, i + per)" in js and "if (d) d.destroy();" in js and "bgGen++;" in js
+    # PDF.js は canvas 全体を白で塗るので、別の canvas に描いてから貼る
+    assert "ctx.drawImage(tmp," in js

@@ -194,19 +194,18 @@ def test_allowed_work_is_accepted_and_disallowed_is_rejected(table):
     rid = new(c, construction="配管工事")
     assert c.patch(f"{url}/{rid}", json={"work": "組み立て作業"}).status_code == 200
     assert get(c, rid)["work"] == "組み立て作業"
-    r = c.patch(f"{url}/{rid}", json={"work": "配線工事"})  # 登録はあるが、配管工事では選べない
-    assert r.status_code == 400
-    assert "作業内容" in r.get_json()["error"] and "配線工事" in r.get_json()["error"]
-    assert get(c, rid)["work"] == "組み立て作業"  # 何も変わらない
+    # 配管工事の選択肢には無いが、手入力として保存する
+    assert c.patch(f"{url}/{rid}", json={"work": "配線工事"}).status_code == 200
+    assert get(c, rid)["work"] == "配線工事"
     assert c.patch(f"{url}/{rid}", json={"work": ""}).status_code == 200  # 空はいつでも可
     assert get(c, rid)["work"] == ""
 
 
-def test_unregistered_work_is_still_rejected_first(table):
+def test_unregistered_work_can_be_typed(table):
     c, url, new, get = table
     rid = new(c, construction="配管工事")
-    r = c.patch(f"{url}/{rid}", json={"work": "未登録作業"})
-    assert r.status_code == 400 and "登録リストにありません" in r.get_json()["error"]
+    assert c.patch(f"{url}/{rid}", json={"work": "未登録作業"}).status_code == 200
+    assert get(c, rid)["work"] == "未登録作業"
 
 
 def test_unmapped_or_empty_construction_allows_any_registered_work(table):
@@ -223,7 +222,7 @@ def test_unmapped_or_empty_construction_allows_any_registered_work(table):
 def test_work_alone_is_checked_against_the_stored_construction(table):
     c, url, new, get = table
     rid = new(c, construction="電気工事")
-    assert c.patch(f"{url}/{rid}", json={"work": "清掃"}).status_code == 400
+    assert c.patch(f"{url}/{rid}", json={"work": "清掃"}).status_code == 200  # 手入力
     assert c.patch(f"{url}/{rid}", json={"work": "配線工事"}).status_code == 200
 
 
@@ -274,10 +273,9 @@ def test_request_with_both_fields_is_validated_as_a_pair(table):
     # 組み合わせが正しければ、保存してある作業内容が合わなくても通る
     assert c.patch(f"{url}/{rid}", json={"construction": "電気工事", "work": "配線工事"}).status_code == 200
     assert (get(c, rid)["construction"], get(c, rid)["work"]) == ("電気工事", "配線工事")
-    # 組み合わせが正しくなければ 400 で、何も変わらない
-    r = c.patch(f"{url}/{rid}", json={"construction": "配管工事", "work": "配線工事"})
-    assert r.status_code == 400 and "作業内容" in r.get_json()["error"]
-    assert (get(c, rid)["construction"], get(c, rid)["work"]) == ("電気工事", "配線工事")
+    # 組み合わせが選択肢に無くても、両方を送ったときは手入力として、そのまま保存する
+    assert c.patch(f"{url}/{rid}", json={"construction": "配管工事", "work": "配線工事"}).status_code == 200
+    assert (get(c, rid)["construction"], get(c, rid)["work"]) == ("配管工事", "配線工事")
     # 作業内容を空にして工事件名を変えるのも通る
     assert c.patch(f"{url}/{rid}", json={"construction": "配管工事", "work": ""}).status_code == 200
     assert (get(c, rid)["construction"], get(c, rid)["work"]) == ("配管工事", "")

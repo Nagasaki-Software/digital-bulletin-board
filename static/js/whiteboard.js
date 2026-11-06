@@ -16,6 +16,9 @@ const MAX_PAGES = 50; // サーバー（whiteboard.py）の上限と同じ
 const NO_BACKGROUND = "__none__";
 const SCHEDULE_NAME = "工程表";
 const SCHEDULE_DEFAULT_DAYS = 24;
+const GRID_COLS = 3;
+const GRID_ROWS = 2;
+const GRID_NAME = "PDFを6枚ずつ並べる（3×2）";
 const FONT = '"Meiryo", "メイリオ", "Yu Gothic UI", sans-serif';
 
 let idleSeconds = 180;
@@ -26,13 +29,14 @@ let tool = "pen";
 let color = COLORS[0];
 let widthIdx = 1;
 let stamp = STAMPS[0];
-// ページごとの記録。背景は pdf のページ番号（pageNo）か写真（img）か工程表（schedule）。page は PDF のページを読み込んだもの
+// ページごとの記録。背景は pdf のページ番号（pageNo）か写真（img）か工程表（schedule）か3×2に並べるPDFの名前（grid）。page は PDF のページを読み込んだもの
 let pages = [newPage(0, null)];
 let cur = 0;
 let saved = true; // 開いた直後、または最後の保存のあとに描き足していない
 let bgDoc = null;
 let bgName = "";
 let bgTask = null;
+let bgGen = 0; // 画面の背景を描き直すたびに増やす（3×2 の描きかけを止める目印）
 let ratio = 1;
 let cssW = 1;
 let cssH = 1;
@@ -40,8 +44,8 @@ let drag = null; // 描いている最中の指（1本だけ見る）: { id, sta
 let textAt = null; // 文字入力中の場所: { x, y, size, color }
 let lastActivity = 0;
 
-function newPage(pageNo, img, history = createHistory(), schedule = null) {
-  return { history, pageNo, img, page: null, schedule };
+function newPage(pageNo, img, history = createHistory(), schedule = null, grid = null) {
+  return { history, pageNo, img, page: null, schedule, grid };
 }
 
 const H = () => pages[cur].history;
@@ -281,6 +285,10 @@ async function drawBackground(canvas, pg, track) {
     drawSchedule(ctx, canvas.width, canvas.height, pg.schedule);
     return;
   }
+  if (pg.grid) {
+    await drawGrid(ctx, canvas.width, canvas.height, pg.grid, track ? bgGen : null);
+    return;
+  }
   if (pg.img) {
     const fit = Math.min(canvas.width / pg.img.naturalWidth, canvas.height / pg.img.naturalHeight);
     const w = pg.img.naturalWidth * fit;
@@ -307,7 +315,68 @@ async function drawBackground(canvas, pg, track) {
   }
 }
 
+// PDF を3×2に並べた背景。メモリを抑えるため1つずつ開き、1ページ目を描いたらすぐ閉じる。
+// gen は画面用の描画の番号。途中で別のページ・背景に替わったら（bgGen が進んだら）描くのをやめる
+async function drawGrid(ctx, w, h, names, gen) {
+  const stale = () => gen !== null && gen !== bgGen;
+  const gap = Math.round(h * 0.012);
+  const cw = (w - gap * (GRID_COLS + 1)) / GRID_COLS;
+  const ch = (h - gap * (GRID_ROWS + 1)) / GRID_ROWS;
+  const capH = Math.round(ch * 0.07);
+  const tmp = document.createElement("canvas");
+  ctx.save();
+  ctx.lineWidth = Math.max(1, h / 900);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = `${capH * 0.7}px ${FONT}`;
+  for (let i = 0; i < names.length; i++) {
+    if (stale()) break;
+    const x = gap + (i % GRID_COLS) * (cw + gap);
+    const y = gap + Math.floor(i / GRID_COLS) * (ch + gap);
+    const ph = ch - capH;
+    ctx.fillStyle = "#111827";
+    ctx.fillText(names[i].replace(/\.pdf$/i, ""), x + cw / 2, y + ph + capH / 2, cw - 8);
+    let d = null;
+    try {
+      d = await loadPdf(SOURCES.pdf.file(names[i]));
+      if (stale()) break;
+      const page = await d.getPage(1);
+      if (stale()) break;
+      const base = page.getViewport({ scale: 1 });
+      const vp = page.getViewport({ scale: Math.min(cw / base.width, ph / base.height) });
+      // PDF.js は描く前に canvas 全体を白で塗るので、別の canvas に描いてから貼る（先に描いたマスを消さない）
+      tmp.width = Math.max(1, Math.floor(vp.width));
+      tmp.height = Math.max(1, Math.floor(vp.height));
+      const task = page.render({ canvasContext: tmp.getContext("2d"), viewport: vp });
+      if (gen !== null) bgTask = task;
+      try {
+        await task.promise;
+      } finally {
+        if (bgTask === task) bgTask = null;
+      }
+      if (stale()) break;
+      ctx.drawImage(tmp, x + (cw - tmp.width) / 2, y + (ph - tmp.height) / 2);
+    } catch (e) {
+      if ((e && e.name === "RenderingCancelledException") || stale()) break;
+      console.error("背景のPDFを表示できません", names[i], e);
+      ctx.fillStyle = "#B91C1C";
+      ctx.fillText("表示できません", x + cw / 2, y + ph / 2, cw - 8);
+    } finally {
+      if (d) d.destroy();
+    }
+  }
+  // 枠は最後に引く（PDF の白い余白で枠の線が欠けないように）
+  ctx.strokeStyle = "#9CA3AF";
+  for (let i = 0; i < names.length && !stale(); i++) {
+    ctx.strokeRect(gap + (i % GRID_COLS) * (cw + gap), gap + Math.floor(i / GRID_COLS) * (ch + gap), cw, ch);
+  }
+  tmp.width = 0;
+  tmp.height = 0;
+  ctx.restore();
+}
+
 async function renderBackground() {
+  bgGen++;
   if (bgTask) {
     bgTask.cancel();
     bgTask = null;
@@ -510,7 +579,7 @@ function dropBackground() {
 }
 
 // 新しい背景に替える。ページ数が変わって描いた内容を捨てることになるときは、確かめる。替えたら true
-async function adoptBackground({ doc = null, img = null, schedule = null, name = "", count = 1 }) {
+async function adoptBackground({ doc = null, img = null, schedule = null, grid = null, name = "", count = 1 }) {
   const keep = count === 1 && pages.length === 1 ? pages[0].history : null; // 1ページ→1ページなら、描いたものは残す
   if (!keep && anyInk() && !saved) {
     const ok = await confirmBox("背景を替えると、描いた内容は消えます。替えますか？", "替える");
@@ -525,7 +594,7 @@ async function adoptBackground({ doc = null, img = null, schedule = null, name =
   dropBackground();
   bgDoc = doc;
   bgName = name;
-  pages = Array.from({ length: count }, (_, i) => newPage(doc ? i + 1 : 0, img, i === 0 && keep ? keep : createHistory(), schedule));
+  pages = Array.from({ length: count }, (_, i) => newPage(doc ? i + 1 : 0, img, i === 0 && keep ? keep : createHistory(), schedule, grid ? grid[i] : null));
   cur = 0;
   replay();
   syncButtons();
@@ -567,6 +636,7 @@ async function chooseBackground() {
     options: [
       { value: NO_BACKGROUND, label: "背景なし（白紙）" },
       { value: "pdf", label: "PDF" },
+      { value: "pdfgrid", label: GRID_NAME },
       { value: "photo", label: "写真" },
       { value: "schedule", label: SCHEDULE_NAME },
       { value: "saved", label: "保存した内容の続きを書く" },
@@ -581,6 +651,10 @@ async function chooseBackground() {
   }
   if (kind === "schedule") {
     await chooseSchedule();
+    return;
+  }
+  if (kind === "pdfgrid") {
+    await chooseGrid();
     return;
   }
   const src = SOURCES[kind];
@@ -625,6 +699,33 @@ async function chooseBackground() {
   } catch (e) {
     if (doc) doc.destroy();
     say("背景を読み込めません: " + e.message, true);
+  }
+}
+
+// 背景用のフォルダの PDF を、一覧の順に6つずつ1ページへ並べる（7つ目からは2ページ目）。各PDFは1ページ目だけ
+async function chooseGrid() {
+  let names;
+  try {
+    names = await api("GET", SOURCES.pdf.list);
+  } catch (e) {
+    say("一覧を読み込めません: " + e.message, true);
+    return;
+  }
+  if (!names.length) {
+    await alertBox(SOURCES.pdf.empty);
+    return;
+  }
+  const per = GRID_COLS * GRID_ROWS;
+  const grid = [];
+  for (let i = 0; i < names.length; i += per) grid.push(names.slice(i, i + per));
+  if (grid.length > MAX_PAGES) {
+    await alertBox(`PDFが多すぎます（${MAX_PAGES * per}個まで。背景用のフォルダには${names.length}個）`);
+    return;
+  }
+  try {
+    await adoptBackground({ grid, name: GRID_NAME, count: grid.length });
+  } catch (e) {
+    say("背景を表示できません: " + e.message, true);
   }
 }
 

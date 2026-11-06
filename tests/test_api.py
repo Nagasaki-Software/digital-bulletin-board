@@ -84,19 +84,26 @@ def test_changing_company_clears_leader(env):
     assert board(c)["schedule"][0]["leader"] == ""
 
 
-def test_leader_must_belong_to_company(env):
+def test_leader_can_be_typed_freely_without_contact(env):
     c, _, _ = env
     rid = add_row(c, company="1班")
-    r = c.patch(f"/api/schedule/{rid}", json={"leader": "田中"})
-    assert r.status_code == 400
-    assert board(c)["schedule"][0]["leader"] == ""
+    assert c.patch(f"/api/schedule/{rid}", json={"leader": "田中"}).status_code == 200  # 別の会社の人の名前でも、手入力として保存する
+    row = board(c)["schedule"][0]
+    assert (row["leader"], row["ext"], row["outside"]) == ("田中", "", "")
 
 
-def test_values_must_be_registered(env):
+def test_typed_values_are_saved_but_times_must_be_registered(env):
     c, _, _ = env
     rid = add_row(c)
-    assert c.patch(f"/api/schedule/{rid}", json={"company": "未登録会社"}).status_code == 400
-    assert c.patch(f"/api/schedule/{rid}", json={"work": "未登録作業"}).status_code == 400
+    for body in ({"company": "未登録会社"}, {"leader": "山本"}, {"work": "未登録作業"}, {"construction": "未登録工事"}):
+        assert c.patch(f"/api/schedule/{rid}", json=body).status_code == 200, body
+    row = board(c)["schedule"][0]
+    assert (row["company"], row["leader"], row["work"], row["construction"]) == ("未登録会社", "山本", "未登録作業", "未登録工事")
+    assert c.patch(f"/api/schedule/{rid}", json={"work": "あ" * 30}).status_code == 200
+    r = c.patch(f"/api/schedule/{rid}", json={"work": "あ" * 31})
+    assert r.status_code == 400 and "30文字" in r.get_json()["error"]
+    assert c.patch(f"/api/schedule/{rid}", json={"work": "一行目\n二行目"}).status_code == 400
+    assert board(c)["schedule"][0]["work"] == "あ" * 30
     assert c.patch(f"/api/schedule/{rid}", json={"start_time": "25:00"}).status_code == 400
     assert c.patch(f"/api/schedule/{rid}", json={"company": 5}).status_code == 400
     assert c.patch(f"/api/schedule/{rid}", json={"company": ""}).status_code == 200
@@ -184,6 +191,31 @@ def test_holiday_rows_only_on_this_weeks_holidays(env):
     assert [w["label"] for w in b["week_holidays"]] == ["11/3(火)", "11/7(土)", "11/8(日)"]
     row = holiday_row(c, rid)
     assert (row["label"], row["kind"], row["person"]) == ("11/3(火)", "holiday", "山田")
+
+
+def test_holiday_leader_and_contact(env):
+    c, _, _ = env
+    rid = c.post("/api/holiday-rows", json={"date": "2026-11-07"}).get_json()["id"]
+    assert holiday_row(c, rid)["leader"] == ""
+    assert c.patch(f"/api/holiday-rows/{rid}", json={"person": "1班", "leader": "佐藤"}).status_code == 200
+    row = holiday_row(c, rid)
+    assert (row["leader"], row["ext"], row["outside"]) == ("佐藤", "1234", "")
+    # 手入力の責任者は保存するが、内線・外線は出ない
+    assert c.patch(f"/api/holiday-rows/{rid}", json={"leader": "山本"}).status_code == 200
+    row = holiday_row(c, rid)
+    assert (row["leader"], row["ext"], row["outside"]) == ("山本", "", "")
+    # 会社を変えると、責任者は空になる
+    assert c.patch(f"/api/holiday-rows/{rid}", json={"person": "見本電機"}).status_code == 200
+    row = holiday_row(c, rid)
+    assert (row["person"], row["leader"], row["ext"], row["outside"]) == ("見本電機", "", "", "")
+    assert c.patch(f"/api/holiday-rows/{rid}", json={"leader": "田中"}).status_code == 200
+    row = holiday_row(c, rid)
+    assert (row["ext"], row["outside"]) == ("", "03-0000-0001")
+    # 会社と責任者を同時に変えるときは、新しい会社の登録から内線・外線を引く
+    assert c.patch(f"/api/holiday-rows/{rid}", json={"person": "1班", "leader": "田中"}).status_code == 200
+    assert (holiday_row(c, rid)["ext"], holiday_row(c, rid)["outside"]) == ("", "")
+    assert c.patch(f"/api/holiday-rows/{rid}", json={"person": "1班", "leader": "佐藤", "date": "2026-11-08"}).status_code == 200
+    assert holiday_row(c, rid)["leader"] == "佐藤"
 
 
 def test_holiday_rows_sorted_by_date(env):
@@ -287,9 +319,10 @@ def test_schedule_construction_must_be_registered(env):
     rid = add_row(c)
     assert c.patch(f"/api/schedule/{rid}", json={"construction": "配管工事"}).status_code == 200
     assert board(c)["schedule"][0]["construction"] == "配管工事"
-    assert c.patch(f"/api/schedule/{rid}", json={"construction": "未登録工事"}).status_code == 400
     assert c.patch(f"/api/schedule/{rid}", json={"construction": 5}).status_code == 400
     assert board(c)["schedule"][0]["construction"] == "配管工事"
+    assert c.patch(f"/api/schedule/{rid}", json={"construction": "未登録工事"}).status_code == 200  # 手入力
+    assert board(c)["schedule"][0]["construction"] == "未登録工事"
     assert c.patch(f"/api/schedule/{rid}", json={"construction": ""}).status_code == 200
     assert board(c)["schedule"][0]["construction"] == ""
 
@@ -299,9 +332,10 @@ def test_holiday_construction_must_be_registered(env):
     hid = c.post("/api/holiday-rows", json={"date": "2026-11-07"}).get_json()["id"]
     assert c.patch(f"/api/holiday-rows/{hid}", json={"construction": "電気工事"}).status_code == 200
     assert holiday_row(c, hid)["construction"] == "電気工事"
-    assert c.patch(f"/api/holiday-rows/{hid}", json={"construction": "未登録工事"}).status_code == 400
     assert c.patch(f"/api/holiday-rows/{hid}", json={"construction": ["配管工事"]}).status_code == 400
     assert holiday_row(c, hid)["construction"] == "電気工事"
+    assert c.patch(f"/api/holiday-rows/{hid}", json={"construction": "未登録工事"}).status_code == 200  # 手入力
+    assert holiday_row(c, hid)["construction"] == "未登録工事"
     assert c.patch(f"/api/holiday-rows/{hid}", json={"construction": ""}).status_code == 200
 
 
@@ -333,7 +367,7 @@ def test_missing_constructions_folder_warns_but_board_works(tmp_path):
     assert b["masters"]["constructions"] == []
     assert any("data/constructions" in w for w in b["warnings"])
     rid = add_row(c)
-    assert c.patch(f"/api/schedule/{rid}", json={"construction": "配管工事"}).status_code == 400
+    assert c.patch(f"/api/schedule/{rid}", json={"construction": "配管工事"}).status_code == 200  # リストが無くても手入力はできる
 
 
 # ---- 追加テスト（レビュー指摘への対応） ----
@@ -644,7 +678,7 @@ def test_filling_a_seeded_row_works_as_before(env):
     row = board(c)["holiday_rows"][1]
     fields = {"construction": "電気工事", "person": "山田", "work": "配線工事", "start_time": "", "end_time": ""}
     assert c.patch(f"/api/holiday-rows/{row['id']}", json=fields).status_code == 200
-    assert c.patch(f"/api/holiday-rows/{row['id']}", json={"person": "未登録"}).status_code == 400
+    assert c.patch(f"/api/holiday-rows/{row['id']}", json={"start_time": "25:00"}).status_code == 400
     rows = board(c)["holiday_rows"]
     assert len(rows) == 3
     assert (rows[1]["id"], rows[1]["construction"], rows[1]["person"], rows[1]["work"]) == (row["id"], "電気工事", "山田", "配線工事")

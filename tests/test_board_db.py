@@ -396,3 +396,15 @@ def test_concurrent_first_seeding_creates_each_row_once(tmp_path):
     assert errors == []
     assert results.count(True) == 1
     assert [r["date"] for r in week_rows(db)] == list(WEEK)
+
+
+def test_old_database_gets_holiday_leader_column(tmp_path):
+    path = tmp_path / "board.db"
+    make_old_db(path)
+    db = BoardDB(path)
+    db = BoardDB(path)  # 2回目の起動でも列は1つだけ
+    assert columns(path, "holiday_rows").count("leader") == 1
+    hol = db.list_holiday_rows("2026-11-02", "2026-11-08")
+    assert [(r["person"], r["leader"]) for r in hol] == [("山田", "")]
+    db.update_holiday_row(hol[0]["id"], {"leader": "佐藤"})
+    assert db.get_holiday_row(hol[0]["id"])["leader"] == "佐藤"

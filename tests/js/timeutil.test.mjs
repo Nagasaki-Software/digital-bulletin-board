@@ -72,6 +72,8 @@ test("visibleHolidayRows: 入力のある行があれば、同じ日の「―」
   // 同じ日に「―」の行が2つあって、入力がない場合は、どちらも出る（勝手に消さない）
   assert.deepEqual(visibleHolidayRows([empty(1, "2026-10-31"), empty(2, "2026-10-31")]).map((r) => r.id), [1, 2]);
   assert.deepEqual(visibleHolidayRows([]), []);
+  // 責任者だけの入力も「入力あり」と数える
+  assert.deepEqual(visibleHolidayRows([empty(1, "2026-10-31"), filled(2, "2026-10-31", { person: "", leader: "佐藤" })]).map((r) => r.id), [2]);
   // 「＋ 行を追加」で足した空の行は、入力するまで出る（最初から並ぶ「―」の行＝その日の最初の行だけを隠す）
   assert.deepEqual(visibleHolidayRows([filled(1, "2026-10-31"), empty(3, "2026-10-31"), empty(2, "2026-11-01")]).map((r) => r.id), [1, 3, 2]);
   assert.deepEqual(visibleHolidayRows([empty(1, "2026-10-31"), filled(2, "2026-10-31"), empty(3, "2026-10-31")]).map((r) => r.id), [2, 3]);

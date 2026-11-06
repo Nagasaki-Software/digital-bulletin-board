@@ -75,11 +75,11 @@ async function addRowAndEdit(field) {
   }
 }
 
-function fillerRow() {
+function fillerRow(cells = 6) {
   const tr = el("tr");
-  for (let i = 0; i < 6; i++) {
-    const field = FILLER_FIELDS[i];
-    tr.appendChild(td("", { cls: i === 5 ? "edit-only" : "", onClick: field ? () => addRowAndEdit(field) : null }));
+  for (let i = 0; i < cells; i++) {
+    const field = i < cells - 1 ? FILLER_FIELDS[i] : undefined;
+    tr.appendChild(td("", { cls: i === cells - 1 ? "edit-only" : "", onClick: field ? () => addRowAndEdit(field) : null }));
   }
   return tr;
 }
@@ -237,6 +237,10 @@ function renderHolidays() {
       tr.appendChild(td(r.label, { cls: ("b " + dateClass(r.kind)).trim(), onClick: () => editHolidayDate(r) }));
       tr.appendChild(holidayTd(r.construction, "constr", () => editHoliday(r, "construction")));
       tr.appendChild(holidayTd(r.person, "b", () => editHoliday(r, "person")));
+      const leader = holidayTd(r.leader, "b", () => editHoliday(r, "leader"));
+      const contact = r.leader ? contactText(r.ext, r.outside) : "";
+      if (contact) leader.appendChild(el("div", "contact", contact));
+      tr.appendChild(leader);
       tr.appendChild(holidayTd(r.work, "", () => editHoliday(r, "work")));
       const range = formatRangeOrDash(r.start_time, r.end_time);
       tr.appendChild(td(range, { cls: "c" + (r.start_time || r.end_time ? "" : " dash"), onClick: () => editTimes(`/api/holiday-rows/${r.id}`, r) }));
@@ -245,7 +249,7 @@ function renderHolidays() {
       tr.appendChild(act);
       body.appendChild(tr);
     }
-    for (let i = holidayRows.length; i < MIN_HOLIDAY_ROWS; i++) body.appendChild(fillerRow());
+    for (let i = holidayRows.length; i < MIN_HOLIDAY_ROWS; i++) body.appendChild(fillerRow(7));
   });
 }
 
@@ -353,10 +357,6 @@ async function editSchedule(row, field) {
       return;
     }
     options = m.leaders.filter(l => l.company === row.company).map(l => l.leader_name);
-    if (!options.length) {
-      await alertBox("この会社の責任者は登録されていません");
-      return;
-    }
     title = "責任者";
   } else if (field === "construction") {
     options = m.constructions;
@@ -365,7 +365,7 @@ async function editSchedule(row, field) {
     options = worksFor(row.construction, m);
     title = "作業内容";
   }
-  const v = await pickOption({ title, options, current: row[field] });
+  const v = await pickOption({ title, options, current: row[field], allowText: true });
   if (v === undefined) return;
   await save("PATCH", `/api/schedule/${row.id}`, { [field]: v });
 }
@@ -377,10 +377,6 @@ async function editEquipment(row, field) {
   if (field === "equipment") {
     options = m.equipment;
     title = "機器";
-    if (!options.length) {
-      await alertBox("機器が登録されていません。data/equipment.csv に機器の名前を書いてください");
-      return;
-    }
   } else if (field === "company") {
     options = m.companies;
     title = "所属";
@@ -390,25 +386,26 @@ async function editEquipment(row, field) {
       return;
     }
     options = m.leaders.filter(l => l.company === row.company).map(l => l.leader_name);
-    if (!options.length) {
-      await alertBox("この所属の人は登録されていません");
-      return;
-    }
     title = "使用者";
   }
-  const v = await pickOption({ title, options, current: row[field] });
+  const v = await pickOption({ title, options, current: row[field], allowText: true });
   if (v === undefined) return;
   await save("PATCH", `/api/equipment/${row.id}`, { [field]: v });
 }
 
 async function editHoliday(row, field) {
+  if (field === "leader" && !row.person) {
+    await alertBox("先に所属・会社名を選んでください");
+    return;
+  }
   const kinds = {
-    person: { title: "氏名・会社名", options: state.masters.companies },
+    person: { title: "所属・会社名", options: state.masters.companies },
+    leader: { title: "責任者", options: state.masters.leaders.filter(l => l.company === row.person).map(l => l.leader_name) },
     construction: { title: "工事件名", options: state.masters.constructions },
     work: { title: "作業内容", options: worksFor(row.construction, state.masters) },
   };
   const { title, options } = kinds[field];
-  const v = await pickOption({ title, options, current: row[field] });
+  const v = await pickOption({ title, options, current: row[field], allowText: true });
   if (v === undefined) return;
   await save("PATCH", `/api/holiday-rows/${row.id}`, { [field]: v });
 }

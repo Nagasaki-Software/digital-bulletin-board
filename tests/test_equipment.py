@@ -43,21 +43,22 @@ def test_fill_a_row(env):
     assert (r["equipment"], r["company"], r["user"], r["start_time"], r["end_time"]) == ("クレーン", "1班", "鈴木", "9:00", "12:00")
 
 
-def test_values_must_be_registered(env):
+def test_typed_values_are_saved_but_times_must_be_registered(env):
     c, _, _ = env
     rid = board(c)["equipment"][0]["id"]
-    assert c.patch(f"/api/equipment/{rid}", json={"equipment": "ショベル"}).status_code == 400
-    assert c.patch(f"/api/equipment/{rid}", json={"company": "無い会社"}).status_code == 400
+    for body in ({"equipment": "ショベル"}, {"company": "無い会社"}, {"user": "山本"}):
+        assert c.patch(f"/api/equipment/{rid}", json=body).status_code == 200, body
+    r = board(c)["equipment"][0]
+    assert (r["equipment"], r["company"], r["user"]) == ("ショベル", "無い会社", "山本")
+    assert c.patch(f"/api/equipment/{rid}", json={"equipment": "あ" * 31}).status_code == 400
     assert c.patch(f"/api/equipment/{rid}", json={"start_time": "9:15"}).status_code == 400
     assert c.patch(f"/api/equipment/{rid}", json={"bogus": "x"}).status_code == 400
 
 
-def test_user_must_belong_to_company_and_company_change_clears_user(env):
+def test_company_change_clears_user(env):
     c, _, _ = env
     rid = board(c)["equipment"][0]["id"]
-    assert c.patch(f"/api/equipment/{rid}", json={"user": "佐藤"}).status_code == 400  # 所属がまだ空
     c.patch(f"/api/equipment/{rid}", json={"company": "1班"})
-    assert c.patch(f"/api/equipment/{rid}", json={"user": "田中"}).status_code == 400  # 別の会社の人
     assert c.patch(f"/api/equipment/{rid}", json={"user": "佐藤"}).status_code == 200
     c.patch(f"/api/equipment/{rid}", json={"company": "見本電機"})
     assert board(c)["equipment"][0]["user"] == ""

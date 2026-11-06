@@ -23,7 +23,7 @@ export function formatRangeOrDash(start, end) {
 // 入力のある行をすべて消したときは、「―」の行がまた出る（休日の日付がいつも分かるように）。
 // 隠すのは、最初から並ぶ「―」の行＝その日の最初の行（id が最小）だけ。「＋ 行を追加」で足した空の行は、入力するまで出す
 export function visibleHolidayRows(rows) {
-  const filled = (r) => Boolean(r.construction || r.person || r.work || r.start_time || r.end_time);
+  const filled = (r) => Boolean(r.construction || r.person || r.leader || r.work || r.start_time || r.end_time);
   const datesWithEntry = new Set(rows.filter(filled).map((r) => r.date));
   const firstId = new Map();
   for (const r of rows) {

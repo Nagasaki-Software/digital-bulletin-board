@@ -29,8 +29,13 @@ function open(build) {
   });
 }
 
-export function pickOption({ title, options, current = "", allowClear = true }) {
-  return open((panel, close) => {
+const TYPE_IT = Symbol("type");
+export const FREE_TEXT_MAX = 30; // サーバー（app.py の FREE_TEXT_MAX）と同じ
+
+// allowText: 選択肢の最後に「その他（手入力）」を出し、押したらキーボードで入力する窓を開く
+export async function pickOption({ title, options, current = "", allowClear = true, allowText = false }) {
+  const values = options.map(o => (typeof o === "string" ? o : o.value));
+  const v = await open((panel, close) => {
     panel.appendChild(el("h3", "", title));
     const grid = el("div", "options");
     for (const o of options) {
@@ -38,20 +43,28 @@ export function pickOption({ title, options, current = "", allowClear = true }) 
       const label = typeof o === "string" ? o : o.label;
       grid.appendChild(btn(label, "opt" + (value === current ? " current" : ""), () => close(value)));
     }
+    if (allowText) {
+      const typed = current && !values.includes(current);
+      grid.appendChild(btn(typed ? `その他（手入力）: ${current}` : "その他（手入力）", "opt type-it" + (typed ? " current" : ""), () => close(TYPE_IT)));
+    }
     panel.appendChild(grid);
     const actions = el("div", "panel-actions");
     if (allowClear) actions.appendChild(btn("クリア", "opt", () => close("")));
     actions.appendChild(btn("閉じる", "opt", () => close(undefined)));
     panel.appendChild(actions);
   });
+  if (v !== TYPE_IT) return v;
+  const r = await inputText({ title: title + "（手入力）", value: current, maxLength: FREE_TEXT_MAX });
+  return r === undefined ? undefined : r.text;
 }
 
-export function inputText({ title, value = "", flagLabel = "", flag = false }) {
+export function inputText({ title, value = "", flagLabel = "", flag = false, maxLength = 0 }) {
   return open((panel, close) => {
     panel.appendChild(el("h3", "", title));
     const input = el("input");
     input.type = "text";
     input.value = value;
+    if (maxLength) input.maxLength = maxLength;
     panel.appendChild(input);
     let check = null;
     if (flagLabel) {

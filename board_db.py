@@ -2,7 +2,7 @@ import sqlite3
 from contextlib import contextmanager
 
 SCHEDULE_FIELDS = ("company", "leader", "work", "start_time", "end_time", "construction")
-HOLIDAY_FIELDS = ("date", "person", "work", "start_time", "end_time", "construction")
+HOLIDAY_FIELDS = ("date", "person", "leader", "work", "start_time", "end_time", "construction")
 NOTICE_FIELDS = ("text", "red")
 EQUIPMENT_FIELDS = ("equipment", "company", "user", "start_time", "end_time")
 MIN_NOTICES = 3
@@ -55,6 +55,9 @@ class BoardDB:
                 cols = [r["name"] for r in c.execute(f"PRAGMA table_info({table})")]
                 if "construction" not in cols:
                     c.execute(f"ALTER TABLE {table} ADD COLUMN construction TEXT NOT NULL DEFAULT ''")
+            # 休日出勤予定の「責任者」列（v0.6.0 で追加）
+            if "leader" not in [r["name"] for r in c.execute("PRAGMA table_info(holiday_rows)")]:
+                c.execute("ALTER TABLE holiday_rows ADD COLUMN leader TEXT NOT NULL DEFAULT ''")
 
     @contextmanager
     def _tx(self, write=True):
