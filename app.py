@@ -26,7 +26,7 @@ import whiteboard as wb
 from board_db import EQUIPMENT_FIELDS, HOLIDAY_FIELDS, SCHEDULE_FIELDS, BoardDB
 from config import DEFAULTS, clean_admin_settings, load_config, save_admin_settings
 
-APP_VERSION = "0.6.0"  # 画面と /api/health に出す。版数の出どころはここだけ
+APP_VERSION = "0.7.0"  # 画面と /api/health に出す。版数の出どころはここだけ
 APP_ID = "digital-bulletin-board"  # /api/health に出す。起動.bat が、隣のポートの別アプリと見分けるのに使う
 PORT_FILE = "server_port.txt"  # 実際に使っているポート番号。起動.bat が読む
 ADMIN_KEY_FILE = "admin_key.txt"
@@ -207,7 +207,8 @@ def _changed_groups(old, clean):
         out.append(f"文書の操作なし戻り（{idle}）")
     if "custom_holidays_file" in clean and clean["custom_holidays_file"] != old["custom_holidays_file"]:
         out.append(f"会社の休日ファイル（{clean['custom_holidays_file']}）")
-    for key, label in (("whiteboard_save_folder", "ホワイトボードの保存フォルダ"), ("whiteboard_pdf_folder", "ホワイトボードの背景用PDFフォルダ"), ("whiteboard_idle_seconds", "ホワイトボードの操作なし戻り")):
+    for key, label in (("whiteboard_save_folder", "ホワイトボードの保存フォルダ"), ("whiteboard_pdf_folder", "ホワイトボードの背景用PDFフォルダ"), ("whiteboard_idle_seconds", "ホワイトボードの操作なし戻り"),
+                       ("accident_folder", "災害事例のフォルダ"), ("companies_folder", "所属・会社名のフォルダ"), ("constructions_folder", "工事件名のフォルダ")):
         if key in clean and clean[key] != old[key]:
             out.append(f"{label}（{clean[key]}）")
     links = clean.get("links", {})
@@ -246,7 +247,12 @@ def create_app(base_dir=None, today_func=date.today, port=None, cfg=None, log_re
         r = live["rt"]
         return r.holidays_file, r.holidays_label
 
-    masters = mst.Masters(data_dir, holidays_source)
+    def folders_source():
+        # 所属・会社名、工事件名のフォルダ（読むだけ）。警告には設定に書いた場所をそのまま出す
+        r = live["rt"]
+        return {"companies": (r.companies_dir, r.cfg["companies_folder"]), "constructions": (r.constructions_dir, r.cfg["constructions_folder"])}
+
+    masters = mst.Masters(data_dir, holidays_source, folders_source)
 
     def build_runtime(gen, loaded=None):
         """config.json を読み直し（loaded があればそれを使い）、フォルダの場所などをひとまとめにして返す（フォルダはまだ作らない）。"""
@@ -259,6 +265,8 @@ def create_app(base_dir=None, today_func=date.today, port=None, cfg=None, log_re
             telop_dir=_resolve(base, cfg["telop"]["folder"]),
             wb_save_dir=_resolve(base, cfg["whiteboard_save_folder"]),
             wb_pdf_dir=_resolve(base, cfg["whiteboard_pdf_folder"]),
+            companies_dir=_resolve(base, cfg["companies_folder"]),
+            constructions_dir=_resolve(base, cfg["constructions_folder"]),
             # 会社の休日ファイル（読むだけ）。既定の場所のときは、無くても警告しない
             holidays_file=_resolve(base, cfg["custom_holidays_file"]),
             holidays_label=None if cfg["custom_holidays_file"] == DEFAULTS["custom_holidays_file"] else cfg["custom_holidays_file"],
@@ -370,6 +378,12 @@ def create_app(base_dir=None, today_func=date.today, port=None, cfg=None, log_re
                 if len(value) > FREE_TEXT_MAX or any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
                     return f"{FREE_TEXT_MAX}文字までの1行で入力してください"
                 continue
+            if key == "workers":
+                # 作業者数：半角数字で 0〜999。先頭の 0 は取って保存する
+                if not (value.isascii() and value.isdigit() and int(value) <= 999):
+                    return "作業者数は 0〜999 の数字で入力してください"
+                fields[key] = str(int(value))
+                continue
             if key in ("start_time", "end_time"):
                 ok = value in m["times"]
             else:
@@ -445,6 +459,9 @@ def create_app(base_dir=None, today_func=date.today, port=None, cfg=None, log_re
                 "whiteboard_save_folder": cfg["whiteboard_save_folder"],
                 "whiteboard_pdf_folder": cfg["whiteboard_pdf_folder"],
                 "whiteboard_idle_seconds": cfg["whiteboard_idle_seconds"],
+                "accident_folder": cfg["accident_folder"],
+                "companies_folder": cfg["companies_folder"],
+                "constructions_folder": cfg["constructions_folder"],
                 "links": {"items": [dict(i) for i in cfg["links"]["items"]], "max_stay_seconds": cfg["links"]["max_stay_seconds"]},
             }
         )
@@ -478,7 +495,7 @@ def create_app(base_dir=None, today_func=date.today, port=None, cfg=None, log_re
             live["rt"] = new = build_runtime(rt().gen + 1)
         log.info("設定を保存しました（変更: %s）", "、".join(changed) or "変更なし")
         ensure_folders(new)
-        warnings = [f"{what}のフォルダを作れませんでした: {folder}" for what, folder, _e in new.problems if what != "災害事例"]
+        warnings = [f"{what}のフォルダを作れませんでした: {folder}" for what, folder, _e in new.problems]
         for w in warnings:
             log.warning("%s", w)
         return jsonify({"ok": True, "warnings": warnings} if warnings else {"ok": True})

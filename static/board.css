@@ -25,6 +25,8 @@
 
 * { box-sizing: border-box; }
 html { font-size: calc(100vw / 180); }
+/* 4K の画面では、文字を小さくして行を多く見せる（uhd は board.js が付ける） */
+html.uhd { font-size: calc(100vw / 180 * 0.85); }
 body { margin: 0; font-family: "Meiryo", "メイリオ", "Yu Gothic UI", sans-serif; font-size: 1rem; color: var(--text);
        background: var(--bg); user-select: none; -webkit-user-select: none; overflow: hidden; }
 button { font-family: inherit; color: inherit; }
@@ -58,6 +60,7 @@ section > h2:first-child { margin-top: 0; }
 
 #notices { flex: none; max-height: calc(7rem + 6px); overflow-y: auto; background: var(--card);
            border: 2px solid var(--border); border-radius: 1rem; }
+html.uhd #notices { max-height: calc(3 * 3.5rem + 6px); }
 .notice-line { display: flex; align-items: center; gap: .9rem; min-height: 3.5rem; padding: .2rem 1.5rem;
                font-size: 1.75rem; border-top: 1px solid var(--row-line); }
 .notice-line:first-child { border-top: none; }
@@ -91,11 +94,13 @@ td.dash { color: var(--muted); }
 tbody tr:nth-child(even) td { background: var(--row-alt); }
 .contact { margin-top: .1rem; font-size: 1.15rem; font-weight: 400; line-height: 1.3; color: var(--muted);
            white-space: pre; overflow: hidden; text-overflow: ellipsis; } /* 内線と外線は改行で2行。番号の途中では折り返さない */
-#schedule .c-company { width: 15%; } #schedule .c-leader { width: 12.5%; } #schedule .c-work { width: 24.5%; }
-#schedule .c-time { width: 17%; } #schedule .c-constr { width: 19%; } #schedule .c-act { width: 12%; }
+#schedule .c-company { width: 13.5%; } #schedule .c-leader { width: 12.5%; } #schedule .c-workers { width: 8%; } #schedule .c-work { width: 18.1%; }
+#schedule .c-time { width: 15%; } #schedule .c-constr { width: 22.4%; } #schedule .c-act { width: 10.5%; }
+#schedule th.c-workers, #schedule td.w { text-align: center; }
 #schedule th.c-time, #schedule td.c { text-align: right; padding-right: .4rem; white-space: nowrap; }
 /* 機器使用予定: 見出しと2行ぶんの高さ。3行目からは枠の中を上下に動かして見る */
 #equipment-wrap { flex: none; min-height: 0; max-height: calc(3.5rem + 2 * 4.25rem + 6px); }
+html.uhd #equipment-wrap { max-height: calc(3.5rem + 3 * 4.25rem + 6px); }
 #equipment td { height: 4.25rem; }
 #equipment th, #equipment td { padding: 0 .75rem; }
 #equipment td.edit-only { text-align: right; padding-left: 0; padding-right: .3rem; }
@@ -180,6 +185,10 @@ tbody tr:nth-child(even) td { background: var(--row-alt); }
        border: 2px solid var(--btn-border); border-radius: .6rem; }
 .opt.current { color: var(--chip-on-text); background: var(--chip-on-bg); border-color: var(--chip-on-border); }
 .opt.type-it { border-style: dashed; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.num-shown { margin-bottom: 1rem; padding: .6rem 1rem; font-size: 2.4rem; font-weight: 700; text-align: right; color: #0F172A;
+             background: #FFFFFF; border: 2px solid var(--border); border-radius: .6rem; }
+.num-pad { display: grid; grid-template-columns: repeat(3, 9rem); gap: .8rem; justify-content: center; }
+.num-pad .opt { font-size: 2rem; white-space: nowrap; }
 .panel-actions { display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1rem; }
 .panel input[type=text] { width: 100%; padding: .6rem; font-size: 1.6rem; color: #0F172A; background: #FFFFFF;
                           user-select: text; -webkit-user-select: text; }

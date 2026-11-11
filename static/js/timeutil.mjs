@@ -32,6 +32,11 @@ export function visibleHolidayRows(rows) {
   return rows.filter((r) => filled(r) || !datesWithEntry.has(r.date) || r.id !== firstId.get(r.date));
 }
 
+// 4K の画面か。Windows の拡大（150% など）やブラウザの拡大を掛け戻した、実際の横の画素数で見る
+export function isUhd(screenWidth, pixelRatio) {
+  return screenWidth * pixelRatio >= 3000;
+}
+
 export function contactText(ext, outside) {
   const parts = [];
   if (ext) parts.push("内線 " + ext);

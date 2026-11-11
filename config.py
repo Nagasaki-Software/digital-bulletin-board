@@ -35,6 +35,8 @@ DEFAULTS = {
     "links": {"items": [], "max_stay_seconds": 300},
     "standby": {"start": "18:00", "end": "08:00", "wake_idle_seconds": 300},
     "custom_holidays_file": "data/custom_holidays.csv",
+    "companies_folder": "data/companies",
+    "constructions_folder": "data/constructions",
     "whiteboard_save_folder": "whiteboard",
     "whiteboard_pdf_folder": "whiteboard_pdfs",
     "whiteboard_idle_seconds": 180,
@@ -200,6 +202,8 @@ def load_config(path):
     take(user, "custom_holidays_file", "custom_holidays_file", _file_path, cfg)
     take(user, "whiteboard_save_folder", "whiteboard_save_folder", _path, cfg)
     take(user, "whiteboard_pdf_folder", "whiteboard_pdf_folder", _path, cfg)
+    take(user, "companies_folder", "companies_folder", _path, cfg)
+    take(user, "constructions_folder", "constructions_folder", _path, cfg)
     take(user, "whiteboard_idle_seconds", "whiteboard_idle_seconds", _wb_idle, cfg, "秒")
 
     if "documents" in user:
@@ -382,7 +386,8 @@ def clean_admin_settings(body):
         if _file_path(path) is _BAD:
             raise ValueError("会社の休日ファイルに「..」は使えません")
         clean["custom_holidays_file"] = path
-    for key, label in (("whiteboard_save_folder", "ホワイトボードの保存フォルダ"), ("whiteboard_pdf_folder", "ホワイトボードの背景用PDFフォルダ")):
+    for key, label in (("whiteboard_save_folder", "ホワイトボードの保存フォルダ"), ("whiteboard_pdf_folder", "ホワイトボードの背景用PDFフォルダ"),
+                       ("accident_folder", "災害事例のフォルダ"), ("companies_folder", "所属・会社名のフォルダ"), ("constructions_folder", "工事件名のフォルダ")):
         if key in body:
             clean[key] = _admin_folder(body[key], label, DEFAULTS[key])
     if "whiteboard_idle_seconds" in body:
@@ -508,7 +513,8 @@ def save_admin_settings(path, clean):
         data["telop"]["folder"] = clean["telop"]["folder"]
     if "idle_return_seconds" in clean["documents"]:
         data["documents"]["idle_return_seconds"] = clean["documents"]["idle_return_seconds"]
-    for key in ("accident_seconds", "edit_lock_seconds", "custom_holidays_file", "whiteboard_save_folder", "whiteboard_pdf_folder", "whiteboard_idle_seconds"):
+    for key in ("accident_seconds", "edit_lock_seconds", "custom_holidays_file", "whiteboard_save_folder", "whiteboard_pdf_folder", "whiteboard_idle_seconds",
+                "accident_folder", "companies_folder", "constructions_folder"):
         if key in clean:
             data[key] = clean[key]
     if clean.get("links"):

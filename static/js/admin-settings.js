@@ -114,6 +114,9 @@ async function load() {
     $("wb-save-folder").value = s.whiteboard_save_folder || "";
     $("wb-pdf-folder").value = s.whiteboard_pdf_folder || "";
     $("wb-idle-seconds").value = s.whiteboard_idle_seconds ?? "";
+    $("accident-folder").value = s.accident_folder || "";
+    $("companies-folder").value = s.companies_folder || "";
+    $("constructions-folder").value = s.constructions_folder || "";
     const ln = s.links || {};
     for (let i = 0; i < LINK_ROWS; i++) {
       const it = (ln.items || [])[i];
@@ -197,6 +200,9 @@ function collect() {
       whiteboard_save_folder: $("wb-save-folder").value.trim(),
       whiteboard_pdf_folder: $("wb-pdf-folder").value.trim(),
       whiteboard_idle_seconds: wbIdle,
+      accident_folder: $("accident-folder").value.trim(),
+      companies_folder: $("companies-folder").value.trim(),
+      constructions_folder: $("constructions-folder").value.trim(),
       links: { items: linkItems, max_stay_seconds: stay },
     },
   };

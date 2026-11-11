@@ -1,6 +1,8 @@
 import { api } from "./api.js";
 import { pickOption, inputText, confirmBox, alertBox } from "./picker.js";
+import { inputNumber } from "./picker.js";
 import { formatRange, formatRangeOrDash, orDash, contactText, visibleHolidayRows, worksFor } from "./timeutil.mjs";
+import { isUhd } from "./timeutil.mjs";
 import { setPlaylist, setSeconds, pause as pauseAccident, resume as resumeAccident } from "./accident.js";
 import { renderDocButtons, closeDocuments } from "./documents.js";
 import { renderLinkButtons, closeLink, initLinks } from "./links.js";
@@ -13,7 +15,6 @@ import { initTelop, updateTelop } from "./telop.js";
 import { initAdminSettings } from "./admin-settings.js";
 
 const MIN_SCHEDULE_ROWS = 7;
-const MIN_EQUIPMENT_ROWS = 2;
 const MIN_HOLIDAY_ROWS = 2;
 const POLL_MS = 3000;
 const TOAST_MS = 6000;
@@ -21,6 +22,14 @@ const ALERT_ICON =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>';
 
 const $ = id => document.getElementById(id);
+
+function applyScreenSize() {
+  document.documentElement.classList.toggle("uhd", isUhd(screen.width, devicePixelRatio));
+}
+applyScreenSize();
+addEventListener("resize", applyScreenSize);
+const uhd = () => document.documentElement.classList.contains("uhd");
+const minEquipmentRows = () => (uhd() ? 3 : 2);
 let state = null;
 let lastRev = null;
 let lastToday = null;
@@ -56,7 +65,9 @@ function actBtn(label, onClick, disabled = false, extraCls = "") {
 }
 
 // 空白の行を押したら、行を1つ足して、押した欄の選択窓をそのまま開く（責任者の欄は先に所属・会社名が要るので、そちらを開く）
-const FILLER_FIELDS = ["construction", "company", "company", "work", "times"];
+// 空白の行の各欄を押したときに開く選択窓（表の列の順）。責任者の欄は、先に所属・会社名が要るので、所属の窓を開く
+const FILLER_FIELDS = ["construction", "company", "company", "workers", "work", "times"];
+const HOLIDAY_FILLER_FIELDS = ["date", "construction", "person", "person", "work", "times"];
 let fillerBusy = false;
 async function addRowAndEdit(field) {
   if (fillerBusy) return;
@@ -67,6 +78,7 @@ async function addRowAndEdit(field) {
     const row = state.schedule.find(x => x.id === r.id);
     if (!row) return;
     if (field === "times") await editTimes(`/api/schedule/${row.id}`, row);
+    else if (field === "workers") await editWorkers(row);
     else await editSchedule(row, field);
   } catch (e) {
     showToast("保存できませんでした: " + e.message);
@@ -75,11 +87,11 @@ async function addRowAndEdit(field) {
   }
 }
 
-function fillerRow(cells = 6) {
+function fillerRow(cells = 7, fields = FILLER_FIELDS, add = addRowAndEdit) {
   const tr = el("tr");
   for (let i = 0; i < cells; i++) {
-    const field = i < cells - 1 ? FILLER_FIELDS[i] : undefined;
-    tr.appendChild(td("", { cls: i === cells - 1 ? "edit-only" : "", onClick: field ? () => addRowAndEdit(field) : null }));
+    const field = i < cells - 1 ? fields[i] : undefined;
+    tr.appendChild(td("", { cls: i === cells - 1 ? "edit-only" : "", onClick: field ? () => add(field) : null }));
   }
   return tr;
 }
@@ -169,6 +181,7 @@ function renderSchedule() {
       const contact = r.leader ? contactText(r.ext, r.outside) : "";
       if (contact) leader.appendChild(el("div", "contact", contact));
       tr.appendChild(leader);
+      tr.appendChild(td(r.workers === "" ? "" : r.workers + "名", { cls: "b w", onClick: () => editWorkers(r) }));
       tr.appendChild(td(r.work, { onClick: () => editSchedule(r, "work") }));
       tr.appendChild(td(formatRange(r.start_time, r.end_time), { cls: "b c", onClick: () => editTimes(`/api/schedule/${r.id}`, r) }));
       const act = td("", { cls: "edit-only" });
@@ -218,7 +231,7 @@ function renderEquipment() {
       tr.appendChild(act);
       body.appendChild(tr);
     }
-    for (let i = state.equipment.length; i < MIN_EQUIPMENT_ROWS; i++) {
+    for (let i = state.equipment.length; i < minEquipmentRows(); i++) {
       const tr = el("tr");
       for (const field of EQUIPMENT_FILLER_FIELDS) tr.appendChild(td("", { onClick: () => addEquipmentAndEdit(field) }));
       tr.appendChild(td("", { cls: "edit-only" }));
@@ -249,7 +262,7 @@ function renderHolidays() {
       tr.appendChild(act);
       body.appendChild(tr);
     }
-    for (let i = holidayRows.length; i < MIN_HOLIDAY_ROWS; i++) body.appendChild(fillerRow(7));
+    for (let i = holidayRows.length; i < MIN_HOLIDAY_ROWS; i++) body.appendChild(fillerRow(7, HOLIDAY_FILLER_FIELDS, addHolidayAndEdit));
   });
 }
 
@@ -417,6 +430,12 @@ async function editHolidayDate(row) {
   await save("PATCH", `/api/holiday-rows/${row.id}`, { date: v });
 }
 
+async function editWorkers(row) {
+  const v = await inputNumber({ title: "作業者数", value: row.workers, maxDigits: 3, unit: "名" });
+  if (v === undefined) return;
+  await save("PATCH", `/api/schedule/${row.id}`, { workers: v });
+}
+
 async function editTimes(url, row) {
   const times = state.masters.times;
   const start = await pickOption({ title: "開始時刻", options: times, current: row.start_time });
@@ -439,6 +458,34 @@ async function addHoliday() {
   const date = await pickOption({ title: "休日出勤の日付", options, allowClear: false });
   if (!date) return;
   await save("POST", "/api/holiday-rows", { date });
+}
+
+// 休日出勤の空白の行を押したら、日付を選んで休日出勤の行を1つ足し、押した欄の選択窓を開く（今週の休日が1日だけなら日付は聞かない）
+async function addHolidayAndEdit(field) {
+  if (fillerBusy) return;
+  fillerBusy = true;
+  try {
+    if (!state.week_holidays.length) {
+      await alertBox("今週は休日がありません。会社の休日は data/custom_holidays.csv に登録します。");
+      return;
+    }
+    let date = state.week_holidays[0].date;
+    if (state.week_holidays.length > 1) {
+      const options = state.week_holidays.map(w => ({ value: w.date, label: w.label }));
+      date = await pickOption({ title: "休日出勤の日付", options, allowClear: false });
+      if (!date) return;
+    }
+    const r = await api("POST", "/api/holiday-rows", { date });
+    await refresh();
+    const row = state.holiday_rows.find(x => x.id === r.id);
+    if (!row || field === "date") return;
+    if (field === "times") await editTimes(`/api/holiday-rows/${row.id}`, row);
+    else await editHoliday(row, field);
+  } catch (e) {
+    showToast("保存できませんでした: " + e.message);
+  } finally {
+    fillerBusy = false;
+  }
 }
 
 // 追加ボタンの連打対策: 処理中の押し直しは無視する

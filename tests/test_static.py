@@ -169,8 +169,19 @@ def test_accident_tag_and_counter_are_outside_the_frame(tmp_path):
 def test_empty_schedule_rows_add_a_row_and_open_the_picker(tmp_path):
     js = create_app(tmp_path).test_client().get("/js/board.js").get_data(as_text=True)
     assert "addRowAndEdit" in js and "FILLER_FIELDS" in js
-    # 責任者の欄は、先に所属・会社名が要るので、会社の選択窓を開く
-    assert 'FILLER_FIELDS = ["construction", "company", "company", "work", "times"]' in js
+    # 責任者の欄は、先に所属・会社名が要るので、会社の選択窓を開く（作業者数の欄はテンキー）
+    assert '\nconst FILLER_FIELDS = ["construction", "company", "company", "workers", "work", "times"];' in js
+
+
+def test_empty_holiday_rows_add_a_holiday_row_not_a_schedule_row(tmp_path):
+    js = create_app(tmp_path).test_client().get("/js/board.js").get_data(as_text=True)
+    # 休日出勤の空の行は、休日出勤の行を足す（前は本日の作業予定に足していた）。列は 日付・工事件名・所属・責任者・作業内容・就業予定
+    assert '\nconst HOLIDAY_FILLER_FIELDS = ["date", "construction", "person", "person", "work", "times"];' in js
+    assert "fillerRow(7, HOLIDAY_FILLER_FIELDS, addHolidayAndEdit)" in js
+    add = js[js.index("async function addHolidayAndEdit"):]
+    add = add[:add.index("\n}\n")]
+    assert '"/api/holiday-rows"' in add and '"/api/schedule"' not in add
+    assert "editHoliday(row, field)" in add and "editTimes(`/api/holiday-rows/${row.id}`, row)" in add
 
 
 def test_whiteboard_is_served_and_wired(tmp_path):
@@ -224,3 +235,48 @@ def test_whiteboard_background_can_line_up_six_pdfs(tmp_path):
     assert "names.slice(i, i + per)" in js and "if (d) d.destroy();" in js and "bgGen++;" in js
     # PDF.js は canvas 全体を白で塗るので、別の canvas に描いてから貼る
     assert "ctx.drawImage(tmp," in js
+
+
+def test_uhd_screen_uses_smaller_text_and_three_equipment_rows(tmp_path):
+    c = create_app(tmp_path).test_client()
+    css = c.get("/board.css").get_data(as_text=True)
+    js = c.get("/js/board.js").get_data(as_text=True)
+    # 4K では文字を 85%、機器使用予定を3行分にする（HD は今のまま）
+    assert "html.uhd { font-size: calc(100vw / 180 * 0.85); }" in css
+    assert "html.uhd #equipment-wrap { max-height: calc(3.5rem + 3 * 4.25rem + 6px); }" in css
+    # 4K では連絡事項も3行分にする
+    assert "html.uhd #notices { max-height: calc(3 * 3.5rem + 6px); }" in css
+    assert 'classList.toggle("uhd", isUhd(screen.width, devicePixelRatio))' in js
+    assert "uhd() ? 3 : 2" in js
+    # 本日の作業予定：作業内容を狭くし、工事件名を広げる（作業者数の列を足したあとの幅）
+    assert "#schedule .c-work { width: 18.1%; }" in css
+    assert "#schedule .c-constr { width: 22.4%; }" in css
+
+
+def test_schedule_has_workers_column_with_a_number_pad(tmp_path):
+    c = create_app(tmp_path).test_client()
+    html = c.get("/").get_data(as_text=True)
+    js = c.get("/js/board.js").get_data(as_text=True)
+    picker = c.get("/js/picker.js").get_data(as_text=True)
+    css = c.get("/board.css").get_data(as_text=True)
+    schedule = html[html.index('id="schedule"'):html.index('id="equipment"')]
+    # 責任者の右に作業者数。休日出勤の表には足さない
+    assert schedule.index('class="c-leader"') < schedule.index('class="c-workers"') < schedule.index('class="c-work"')
+    assert html.count('class="c-workers"') == 1
+    assert '"名"' in js and "editWorkers(r)" in js
+    assert "export function inputNumber(" in picker
+    assert "#schedule .c-workers {" in css
+    # 本日の作業予定の列幅の合計は 100%
+    import re
+    widths = re.findall(r"#schedule \.c-[a-z]+ \{ width: ([0-9.]+)%; \}", css)
+    assert len(widths) == 7 and abs(sum(map(float, widths)) - 100) < 0.01
+
+
+def test_settings_screen_has_the_three_data_folders(tmp_path):
+    c = create_app(tmp_path).test_client()
+    html = c.get("/").get_data(as_text=True)
+    js = c.get("/js/admin-settings.js").get_data(as_text=True)
+    for ident, key in (("accident-folder", "accident_folder"), ("companies-folder", "companies_folder"), ("constructions-folder", "constructions_folder")):
+        assert f'id="{ident}"' in html, ident
+        assert f'$("{ident}").value = s.{key} || "";' in js, ident
+        assert f'{key}: $("{ident}").value.trim(),' in js, ident

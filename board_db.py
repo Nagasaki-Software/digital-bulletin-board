@@ -1,7 +1,7 @@
 import sqlite3
 from contextlib import contextmanager
 
-SCHEDULE_FIELDS = ("company", "leader", "work", "start_time", "end_time", "construction")
+SCHEDULE_FIELDS = ("company", "leader", "work", "start_time", "end_time", "construction", "workers")
 HOLIDAY_FIELDS = ("date", "person", "leader", "work", "start_time", "end_time", "construction")
 NOTICE_FIELDS = ("text", "red")
 EQUIPMENT_FIELDS = ("equipment", "company", "user", "start_time", "end_time")
@@ -23,7 +23,8 @@ CREATE TABLE IF NOT EXISTS schedule_rows(
     id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, position INTEGER NOT NULL,
     company TEXT NOT NULL DEFAULT '', leader TEXT NOT NULL DEFAULT '',
     work TEXT NOT NULL DEFAULT '', start_time TEXT NOT NULL DEFAULT '',
-    end_time TEXT NOT NULL DEFAULT '', construction TEXT NOT NULL DEFAULT '');
+    end_time TEXT NOT NULL DEFAULT '', construction TEXT NOT NULL DEFAULT '',
+    workers TEXT NOT NULL DEFAULT '');
 CREATE TABLE IF NOT EXISTS holiday_rows(
     id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL,
     person TEXT NOT NULL DEFAULT '', work TEXT NOT NULL DEFAULT '',
@@ -58,6 +59,9 @@ class BoardDB:
             # 休日出勤予定の「責任者」列（v0.6.0 で追加）
             if "leader" not in [r["name"] for r in c.execute("PRAGMA table_info(holiday_rows)")]:
                 c.execute("ALTER TABLE holiday_rows ADD COLUMN leader TEXT NOT NULL DEFAULT ''")
+            # 本日の作業予定の「作業者数」列（v0.7.0 で追加。数字の文字列、空は未入力）
+            if "workers" not in [r["name"] for r in c.execute("PRAGMA table_info(schedule_rows)")]:
+                c.execute("ALTER TABLE schedule_rows ADD COLUMN workers TEXT NOT NULL DEFAULT ''")
 
     @contextmanager
     def _tx(self, write=True):
@@ -98,8 +102,8 @@ class BoardDB:
                 prev = c.execute("SELECT MAX(date) AS m FROM schedule_rows WHERE date < ?", (d,)).fetchone()["m"]
                 if prev:
                     c.execute(
-                        "INSERT INTO schedule_rows(date, position, company, leader, work, start_time, end_time, construction) "
-                        "SELECT ?, position, company, leader, work, start_time, end_time, construction "
+                        "INSERT INTO schedule_rows(date, position, company, leader, work, start_time, end_time, construction, workers) "
+                        "SELECT ?, position, company, leader, work, start_time, end_time, construction, workers "
                         "FROM schedule_rows WHERE date = ? ORDER BY position",
                         (d, prev),
                     )

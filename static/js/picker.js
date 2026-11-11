@@ -87,6 +87,32 @@ export function inputText({ title, value = "", flagLabel = "", flag = false, max
   });
 }
 
+// 数字だけを押して入れる窓（タッチ用のテンキー）。決定なら数字の文字列（空もある）、キャンセルなら undefined
+export function inputNumber({ title, value = "", maxDigits = 3, unit = "" }) {
+  return open((panel, close) => {
+    panel.appendChild(el("h3", "", title));
+    let text = String(value);
+    const shown = el("div", "num-shown");
+    const show = () => { shown.textContent = text === "" ? "（空）" : text + unit; };
+    show();
+    panel.appendChild(shown);
+    const pad = el("div", "num-pad");
+    for (const k of ["7", "8", "9", "4", "5", "6", "1", "2", "3", "クリア", "0", "←"]) {
+      pad.appendChild(btn(k, "opt", () => {
+        if (k === "クリア") text = "";
+        else if (k === "←") text = text.slice(0, -1);
+        else if (text.length < maxDigits) text = text === "0" ? k : text + k;
+        show();
+      }));
+    }
+    panel.appendChild(pad);
+    const actions = el("div", "panel-actions");
+    actions.appendChild(btn("キャンセル", "opt", () => close(undefined)));
+    actions.appendChild(btn("決定", "opt current", () => close(text)));
+    panel.appendChild(actions);
+  });
+}
+
 // 開始日と終了日（"2026-11-03" の形）を選ぶ。キャンセルなら undefined
 export function inputPeriod({ title, start, end }) {
   return open((panel, close) => {

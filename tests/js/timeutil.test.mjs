@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { formatRange, contactText, visibleHolidayRows, formatClock } from "../../static/js/timeutil.mjs";
+import { formatRange, contactText, visibleHolidayRows, formatClock, isUhd } from "../../static/js/timeutil.mjs";
 
 test("formatClock は 24 時間・ゼロ埋めの HH:MM", () => {
   assert.equal(formatClock(new Date(2026, 10, 1, 9, 5)), "09:05");
@@ -103,4 +103,13 @@ test("worksFor: 工事件名のファイルに書いた作業内容だけを、�
   assert.deepEqual(worksFor("constructor", masters), all);
   assert.deepEqual(worksFor("__proto__", masters), all);
   assert.deepEqual(worksFor("toString", masters), all);
+});
+
+test("isUhd は画面の実際の横の画素数が 3000 以上で true", () => {
+  assert.equal(isUhd(1920, 1), false);   // HD
+  assert.equal(isUhd(3840, 1), true);    // 4K・拡大 100%
+  assert.equal(isUhd(2560, 1.5), true);  // 4K・Windows の拡大 150%
+  assert.equal(isUhd(1280, 3), true);    // 4K・拡大 300%
+  assert.equal(isUhd(1280, 1.5), false); // HD・拡大 150%
+  assert.equal(isUhd(2560, 1), false);   // WQHD
 });

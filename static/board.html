@@ -44,6 +44,7 @@
             <thead><tr>
               <th class="c-constr">工事件名</th>
               <th class="c-company">所属・会社名</th><th class="c-leader">責任者</th>
+              <th class="c-workers">作業者数</th>
               <th class="c-work">作業内容</th><th class="c-time">就業予定</th>
               <th class="c-act edit-only"></th>
             </tr></thead>
@@ -245,6 +246,20 @@
           <input id="holidays-file" class="f-folder" type="text" maxlength="260" placeholder="data/custom_holidays.csv">
         </div>
         <p class="hint">equipment-inspection と共通にするには、そちらの data/custom_holidays.csv のパスを入れます（形式は同じ）</p>
+        <p class="setting-title">データのフォルダ</p>
+        <div class="field-line">
+          <label for="accident-folder">災害事例のフォルダ</label>
+          <input id="accident-folder" class="f-folder" type="text" maxlength="260" placeholder="空欄=accident_casesフォルダ">
+        </div>
+        <div class="field-line">
+          <label for="companies-folder">所属・会社名のフォルダ</label>
+          <input id="companies-folder" class="f-folder" type="text" maxlength="260" placeholder="空欄=data/companiesフォルダ">
+        </div>
+        <div class="field-line">
+          <label for="constructions-folder">工事件名のフォルダ</label>
+          <input id="constructions-folder" class="f-folder" type="text" maxlength="260" placeholder="空欄=data/constructionsフォルダ">
+        </div>
+        <p class="hint">このアプリを動かしているPC（サーバー）から見た場所で書きます。//server/share/災害事例 のようなネットワークの場所も使えます（ドライブ文字は避けてください）。つながらないときは画面の上に警告が出て、会社名・工事件名は前に読めた一覧を使い続けます。</p>
         <p class="setting-title">スリープ・時間</p>
         <div class="field-line">
           <label for="sleep-start">スリープ開始</label>

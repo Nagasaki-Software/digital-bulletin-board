@@ -713,3 +713,23 @@ def test_concurrent_first_boards_do_not_duplicate_rows(env):
         t.join()
     assert errors == []
     assert all_holiday_rows(base) == ["2026-11-03", "2026-11-07", "2026-11-08"]
+
+
+def test_schedule_workers_count(env):
+    c, clock, _ = env
+    rid = add_row(c, company="1班")
+    assert board(c)["schedule"][0]["workers"] == ""
+    assert c.patch(f"/api/schedule/{rid}", json={"workers": "5"}).status_code == 200
+    assert board(c)["schedule"][0]["workers"] == "5"
+    assert c.patch(f"/api/schedule/{rid}", json={"workers": "012"}).status_code == 200
+    assert board(c)["schedule"][0]["workers"] == "12"  # 先頭の 0 は取る
+    for bad_value in ("1000", "-1", "1.5", "五", "５", "abc"):
+        r = c.patch(f"/api/schedule/{rid}", json={"workers": bad_value})
+        assert r.status_code == 400, bad_value
+        assert "作業者数" in r.get_json()["error"]
+    assert c.patch(f"/api/schedule/{rid}", json={"workers": ""}).status_code == 200
+    assert board(c)["schedule"][0]["workers"] == ""
+    # 次の日にも引き継ぐ
+    c.patch(f"/api/schedule/{rid}", json={"workers": "0"})
+    clock["today"] = date(2026, 11, 3)
+    assert board(c)["schedule"][0]["workers"] == "0"

@@ -62,17 +62,17 @@ def natural_key(name):
     return chunks, name
 
 
-def list_csv_files(data_dir, folder):
-    """(使うファイルのパスの一覧（自然順）, 警告文)。使うのは拡張子が .csv の普通のファイルだけ。
-    Excel の一時ファイル（~$）、隠しファイル（.）、雛形・メモ（_）、フォルダは使わない。"""
-    root = Path(data_dir) / folder
+def list_csv_files(root, label):
+    """(使うファイルのパスの一覧（自然順）, 警告文)。root はフォルダの場所、label は警告に出す名前（例: data/companies）。
+    使うのは拡張子が .csv の普通のファイルだけ。Excel の一時ファイル（~$）、隠しファイル（.）、雛形・メモ（_）、フォルダは使わない。
+    フォルダが無い・読めないときは、ファイルの一覧を None で返す。"""
     try:
         with os.scandir(root) as it:
             entries = list(it)
     except (FileNotFoundError, NotADirectoryError):
-        return [], f"data/{folder} フォルダがありません"
-    except OSError as e:
-        return [], f"data/{folder} フォルダを読めません（{e}）"
+        return None, f"{label} フォルダがありません"
+    except (OSError, ValueError) as e:
+        return None, f"{label} フォルダを読めません（{e}）"
     files = [
         Path(e.path)
         for e in entries
@@ -108,11 +108,13 @@ def read_item_file(path, columns):
     return rows, None
 
 
-def load_item_folder(data_dir, folder, columns, kind):
+def load_item_folder(root, label, columns, kind):
     """([(項目名, 行のリスト), ...], 警告のリスト)。項目名はファイル名。同じファイルの中で最初の列が重なった行は、最初の1つだけ使い、
-    重なりの警告はフォルダごとに1つ（最初の例）。"""
-    files, warn = list_csv_files(data_dir, folder)
+    重なりの警告はフォルダごとに1つ（最初の例）。フォルダが無い・読めないときは、項目の一覧を None で返す。"""
+    files, warn = list_csv_files(root, label)
     warnings = [warn] if warn else []
+    if files is None:
+        return None, warnings
     items = []
     first_dup = None
     key = columns[0][0]
@@ -131,7 +133,7 @@ def load_item_folder(data_dir, folder, columns, kind):
                 kept.append(row)
         items.append((path.stem, kept))
     if first_dup:
-        warnings.append(f"data/{folder} に、同じ{kind}が2回書かれたファイルがあります（2回目以降は使いません。最初の例: {first_dup}）")
+        warnings.append(f"{label} に、同じ{kind}が2回書かれたファイルがあります（2回目以降は使いません。最初の例: {first_dup}）")
     return items, warnings
 
 
@@ -167,33 +169,34 @@ def load_custom_holidays(data_dir, path=None, missing_label=None):
     return out, warnings
 
 
-def load_companies(data_dir):
-    """(会社名の一覧, 責任者の一覧, 警告のリスト)。会社名は data/companies/ のファイル名。"""
-    items, warnings = load_item_folder(data_dir, "companies", COMPANY_COLUMNS, "責任者")
+def companies_from(items):
+    """(会社名の一覧, 責任者の一覧)。会社名はファイル名。"""
     companies = [name for name, _ in items]
     leaders = [
         {"company": name, "leader_name": r["leader_name"], "ext": r["ext"], "outside": r["outside"]}
         for name, rows in items
         for r in rows
     ]
-    return companies, leaders, warnings
+    return companies, leaders
 
 
-def load_constructions(data_dir):
-    """(工事件名の一覧, 工事件名 → 選べる作業内容, 作業内容の全体, 警告のリスト)。工事件名は data/constructions/ のファイル名。
+def constructions_from(items):
+    """(工事件名の一覧, 工事件名 → 選べる作業内容, 作業内容の全体)。工事件名はファイル名。
     作業内容が1つも無い工事件名は対応表に入れない（どの作業内容でも選べる）。作業内容の全体は、全ファイルの作業内容を並びの順にまとめ、重なりを除いたもの。"""
-    items, warnings = load_item_folder(data_dir, "constructions", CONSTRUCTION_COLUMNS, "作業内容")
     constructions = [name for name, _ in items]
     construction_works = {name: [r["work"] for r in rows] for name, rows in items if rows}
     works = list(dict.fromkeys(w for ws in construction_works.values() for w in ws))
-    return constructions, construction_works, works, warnings
+    return constructions, construction_works, works
 
 
 class Masters:
-    def __init__(self, data_dir, holidays_source=None):
+    def __init__(self, data_dir, holidays_source=None, folders_source=None):
         """holidays_source: 呼ぶたびに（会社の休日ファイルの場所, 無いときの警告に出す名前）を返す。
-        名前が None なら、ファイルが無くても警告しない。省略時は data_dir の custom_holidays.csv。"""
+        名前が None なら、ファイルが無くても警告しない。省略時は data_dir の custom_holidays.csv。
+        folders_source: 呼ぶたびに {"companies": (場所, 名前), "constructions": (場所, 名前)} を返す。省略時は data_dir の中。"""
         self.holidays_source = holidays_source
+        self.folders_source = folders_source
+        self._last_items = {}  # フォルダごとの、最後に読めた (場所, 項目の一覧)。つながらないときに使い続ける
         self._holiday_stamp = None  # (場所, 次に確かめる時刻, 値)
         self._folders_cache = None  # (次に走査する時刻, 値)
         self.dir = Path(data_dir)
@@ -207,9 +210,28 @@ class Masters:
             with open(equipment, "w", encoding="utf-8-sig", newline="") as f:
                 f.write("name\n" + "\n".join(DEFAULT_EQUIPMENT) + "\n")
 
+    def _folders(self):
+        if self.folders_source:
+            return self.folders_source()
+        return {f: (self.dir / f, f"data/{f}") for f in ("companies", "constructions")}
+
+    def _items(self, folder, columns, kind):
+        """フォルダの項目を読む。つながらないときは、同じ場所で最後に読めた一覧を使い続ける（無ければ空）。"""
+        root, label = self._folders()[folder]
+        items, warnings = load_item_folder(root, label, columns, kind)
+        if items is not None:
+            self._last_items[folder] = (str(root), items)
+            return items, warnings
+        last = self._last_items.get(folder)
+        if last and last[0] == str(root):
+            return last[1], [w + "（前に読めた一覧を使っています）" for w in warnings]
+        return [], warnings
+
     def load_all(self):
-        companies, leaders, warnings = load_companies(self.dir)
-        constructions, construction_works, works, construction_warns = load_constructions(self.dir)
+        items, warnings = self._items("companies", COMPANY_COLUMNS, "責任者")
+        companies, leaders = companies_from(items)
+        items, construction_warns = self._items("constructions", CONSTRUCTION_COLUMNS, "作業内容")
+        constructions, construction_works, works = constructions_from(items)
         warnings.extend(construction_warns)
         loaded = {}
         for key, (fname, cols) in FILES.items():
@@ -240,9 +262,10 @@ class Masters:
         cached = self._folders_cache
         if cached is None or now >= cached[0]:
             lines = []
-            for folder in ("companies", "constructions"):
-                files, _ = list_csv_files(self.dir, folder)
-                for path in files:
+            for folder, (root, label) in self._folders().items():
+                lines.append(f"{folder}={root}")  # 場所を変えたら、中身が同じでも読み直す
+                files, _ = list_csv_files(root, label)
+                for path in files or []:
                     try:
                         st = path.stat()
                     except OSError:

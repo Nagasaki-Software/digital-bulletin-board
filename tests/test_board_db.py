@@ -408,3 +408,13 @@ def test_old_database_gets_holiday_leader_column(tmp_path):
     assert [(r["person"], r["leader"]) for r in hol] == [("山田", "")]
     db.update_holiday_row(hol[0]["id"], {"leader": "佐藤"})
     assert db.get_holiday_row(hol[0]["id"])["leader"] == "佐藤"
+
+
+def test_old_database_gets_workers_column(tmp_path):
+    path = tmp_path / "board.db"
+    make_old_db(path)
+    db = BoardDB(path)
+    assert "workers" in columns(path, "schedule_rows")
+    assert db.list_schedule("2026-11-02")[0]["workers"] == ""
+    BoardDB(path)  # 2回目の起動でも壊れない
+    assert columns(path, "schedule_rows").count("workers") == 1

@@ -33,6 +33,9 @@ NEW_GET = {
     "whiteboard_save_folder": "whiteboard",
     "whiteboard_pdf_folder": "whiteboard_pdfs",
     "whiteboard_idle_seconds": 180,
+    "accident_folder": "accident_cases",
+    "companies_folder": "data/companies",
+    "constructions_folder": "data/constructions",
     "links": {"items": [], "max_stay_seconds": 300},
 }
 
