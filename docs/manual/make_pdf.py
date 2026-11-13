@@ -42,7 +42,7 @@ table { border-collapse: collapse; width: 100%; margin: 8px 0 12px; break-inside
         font-size: 9.5pt; }
 th, td { border: 1px solid #c5ccd6; padding: 4px 8px; vertical-align: top; text-align: left; }
 th { background: #eef2f7; color: #1f3a5f; }
-img { max-width: 100%; border: 1px solid #c5ccd6; display: block; margin: 8px auto 2px;
+img { max-width: 100%; max-height: 220mm; border: 1px solid #c5ccd6; display: block; margin: 8px auto 2px;
       break-inside: avoid; }
 figure { margin: 8px 0; break-inside: avoid; }
 blockquote { margin: 10px 0; padding: 6px 12px; background: #fff7ed;

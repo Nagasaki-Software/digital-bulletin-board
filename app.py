@@ -26,7 +26,7 @@ import whiteboard as wb
 from board_db import EQUIPMENT_FIELDS, HOLIDAY_FIELDS, SCHEDULE_FIELDS, BoardDB
 from config import DEFAULTS, clean_admin_settings, load_config, save_admin_settings
 
-APP_VERSION = "0.7.0"  # 画面と /api/health に出す。版数の出どころはここだけ
+APP_VERSION = "0.8.0"  # 画面と /api/health に出す。版数の出どころはここだけ
 APP_ID = "digital-bulletin-board"  # /api/health に出す。起動.bat が、隣のポートの別アプリと見分けるのに使う
 PORT_FILE = "server_port.txt"  # 実際に使っているポート番号。起動.bat が読む
 ADMIN_KEY_FILE = "admin_key.txt"
@@ -222,6 +222,14 @@ def _changed_groups(old, clean):
 def _resolve(base, p):
     p = Path(p)
     return p if p.is_absolute() else base / p
+
+
+def _file_version(folder, name):
+    try:
+        st = (Path(folder) / name).stat()
+    except OSError:
+        return "0"
+    return f"{st.st_mtime_ns}-{st.st_size}"
 
 
 def _dir_signature(path):
@@ -554,7 +562,8 @@ def create_app(base_dir=None, today_func=date.today, port=None, cfg=None, log_re
                 "holiday_rows": holiday_rows,
                 "week_holidays": week_holidays(m),
                 "checked_genres": checked,
-                "accident": [{"name": n, "url": "/api/accident/file/" + quote(n)} for n in names],
+                # url に版（更新日時と大きさ）を付ける。同じ版のあいだ、画面とブラウザは一度読んだ PDF を使い回す
+                "accident": [{"name": n, "url": "/api/accident/file/" + quote(n) + "?v=" + _file_version(cur.accident_dir, n)} for n in names],
                 "masters": {k: m[k] for k in ("companies", "leaders", "works", "constructions", "genres", "times", "construction_works", "equipment")},
                 "doc_buttons": [{"index": i, "label": b["label"]} for i, b in enumerate(cur.doc_buttons)],
                 "links": {"items": [dict(i) for i in cfg["links"]["items"]], "max_stay_seconds": cfg["links"]["max_stay_seconds"]},
@@ -746,7 +755,12 @@ def create_app(base_dir=None, today_func=date.today, port=None, cfg=None, log_re
 
     @app.get("/api/accident/file/<path:name>")
     def api_accident_file(name):
-        return send_listed_pdf(rt().accident_dir, name)
+        resp = send_listed_pdf(rt().accident_dir, name)
+        if request.args.get("v") and resp.status_code == 200:
+            # 版つきの url は、中身が変わると url も変わるので、ブラウザに1日覚えさせてよい
+            resp.cache_control.no_cache = None  # send_from_directory が付ける「毎回確かめる」を外す
+            resp.cache_control.max_age = 86400
+        return resp
 
     def doc_dir(idx):
         dirs = rt().doc_dirs
@@ -891,7 +905,7 @@ def main(base=None, serve_func=None):
         if serve_func is None:
             from waitress import serve as serve_func
         try:
-            serve_func(app, sockets=[sock], threads=4)  # bind 済みのソケットを渡す（ポートを取ってから起動までの間に横取りされない）
+            serve_func(app, sockets=[sock], threads=8)  # bind 済みのソケットを渡す（ポートを取ってから起動までの間に横取りされない）
         except Exception:
             log.exception("サーバーが異常終了しました")
             raise

@@ -25,6 +25,20 @@ let token = 0;
 let renderTask = null;
 let loadTask = null;
 const LOAD_TIMEOUT_MS = 20000;
+// 一度読んだ PDF を、url（版つき）ごとに覚えておく数。ファイルが替わるたび・ジャンルを変えるたびに読み直さないため
+// （同じ名前で差し替えられた PDF は、サーバーが url の版を変えるので読み直される）
+const DOC_CACHE_MAX = 6;
+const docCache = new Map();
+
+function cacheDoc(url, d) {
+  docCache.delete(url);
+  docCache.set(url, d);
+  while (docCache.size > DOC_CACHE_MAX) {
+    const [oldUrl, oldDoc] = docCache.entries().next().value;
+    docCache.delete(oldUrl);
+    if (oldDoc !== doc) oldDoc.destroy();
+  }
+}
 const FAIL_NOTICE = "この資料は表示できません";
 
 // 設定の表示秒数が変わったときだけ、表示中のスライドの数え直しをする（長い秒数から短くしても古い秒数を待たない）。同じ値なら何もしない
@@ -62,16 +76,38 @@ function cancelLoad() {
 }
 
 function loadDoc(url) {
+  const cached = docCache.get(url);
+  if (cached) {
+    cacheDoc(url, cached); // 最近使った順の先頭へ
+    return Promise.resolve(cached);
+  }
   const task = pdfjsLib.getDocument({ url, cMapUrl: "/pdfjs/cmaps/", cMapPacked: true });
   loadTask = task;
   let tid;
   const timeout = new Promise((_, reject) => {
     tid = setTimeout(() => reject(new Error("読み込みがタイムアウトしました")), LOAD_TIMEOUT_MS);
   });
-  return Promise.race([task.promise, timeout]).finally(() => clearTimeout(tid));
+  return Promise.race([task.promise, timeout])
+    .then(d => {
+      cacheDoc(url, d);
+      return d;
+    })
+    .finally(() => clearTimeout(tid));
 }
 
+// 表示中の PDF から離れる。覚えておいた PDF は片付けない（覚えていないものだけ片付ける）
 function dropDoc() {
+  if (doc) {
+    if (![...docCache.values()].includes(doc)) doc.destroy();
+    doc = null;
+  }
+}
+
+// 壊れていた・読めなかった PDF は、覚えから外して片付ける
+function forgetDoc() {
+  for (const [u, d] of docCache) {
+    if (d === doc) docCache.delete(u);
+  }
   if (doc) {
     doc.destroy();
     doc = null;
@@ -79,13 +115,20 @@ function dropDoc() {
 }
 
 export function setPlaylist(files, emptyMessage) {
-  const key = JSON.stringify(files.map(f => f.name)) + "|" + emptyMessage;
+  const key = JSON.stringify(files.map(f => f.url)) + "|" + emptyMessage;
   if (key === listKey) return;
   listKey = key;
+  // ジャンルを変えても、表示中の資料が新しい一覧に残っていれば、そのページから続ける
+  const current = list[fileIdx] && list[fileIdx].url;
+  const keep = files.findIndex(f => f.url === current);
   list = files;
-  fileIdx = 0;
-  pageNum = 1;
-  dropDoc();
+  if (keep >= 0) {
+    fileIdx = keep;
+  } else {
+    fileIdx = 0;
+    pageNum = 1;
+    dropDoc();
+  }
   cancelLoad();
   clearTimeout(timer);
   advancing = false;
@@ -125,8 +168,7 @@ async function show() {
     if (!doc) {
       const loaded = await loadDoc(list[fileIdx].url);
       if (my !== token) {
-        // 読み込み中に別の表示へ切り替わった。後から届いた分は捨てる（失敗側は切替時の cancelLoad で止まっている）
-        loaded.destroy();
+        // 読み込み中に別の表示へ切り替わった。読めた PDF は覚えてあるので、次に出すときに使う
         return;
       }
       loadTask = null;
@@ -157,7 +199,7 @@ async function show() {
     if (my !== token || (e && e.name === "RenderingCancelledException")) return;
     console.error("災害事例の表示に失敗しました", e);
     cancelLoad();
-    dropDoc();
+    forgetDoc();
     canvas.hidden = true;
     msg.hidden = false;
     msg.textContent = FAIL_NOTICE;
@@ -193,7 +235,7 @@ function step(dir) {
     if (doc && pageNum < doc.numPages) {
       pageNum++;
     } else {
-      // 一周して同じファイルに戻る場合も読み直す（同名で差し替えられた PDF を反映するため）
+      // 同名で差し替えられた PDF は url の版が変わるので、一周して戻ったときに読み直される
       dropDoc();
       fileIdx = (fileIdx + 1) % list.length;
       pageNum = 1;

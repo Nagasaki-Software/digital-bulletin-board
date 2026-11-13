@@ -124,3 +124,20 @@ def test_changing_the_folder_changes_the_signature(tmp_path, monkeypatch):
     where["p"] = b
     monkeypatch.setattr(m, "_clock", lambda: 10**9)  # 走査の間隔を待たずに確かめる
     assert mm.signature() != first
+
+
+def test_accident_url_has_a_version_and_is_cached(tmp_path):
+    c = make(tmp_path)
+    (tmp_path / "data").mkdir(exist_ok=True)
+    (tmp_path / "data" / "genres.csv").write_text("name\n溶接作業\n", encoding="utf-8-sig")
+    pdf = tmp_path / "accident_cases" / "溶接作業_A.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n1")
+    c.post("/api/genres/toggle", json={"name": "溶接作業", "checked": True})
+    url = c.get("/api/board").get_json()["accident"][0]["url"]
+    assert "?v=" in url
+    r = c.get(url)
+    assert r.status_code == 200 and r.headers.get("Cache-Control") == "max-age=86400"
+    pdf.write_bytes(b"%PDF-1.4\n22")  # 同じ名前で差し替えると、url の版が変わる（読み直される）
+    assert c.get("/api/board").get_json()["accident"][0]["url"] != url
+    # 版の無い url（古い画面）は、これまでどおり毎回確かめる
+    assert "max-age=86400" not in c.get(url.split("?")[0]).headers.get("Cache-Control", "")

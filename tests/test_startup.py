@@ -205,7 +205,7 @@ def test_main_binds_an_exclusive_socket_writes_port_file_then_serves_it(tmp_path
         seen["port_file"] = (tmp_path / "server_port.txt").read_bytes()  # 待ち受けを始める前に書かれている
 
     assert app_mod.main(tmp_path, serve_func=fake_serve) == 0
-    assert set(seen["kw"]) == {"sockets", "threads"} and seen["kw"]["threads"] == 4 and len(seen["kw"]["sockets"]) == 1
+    assert set(seen["kw"]) == {"sockets", "threads"} and seen["kw"]["threads"] == 8 and len(seen["kw"]["sockets"]) == 1
     assert seen["name"] == ("127.0.0.1", port)
     assert seen["port_file"] == f"{port}\n".encode()
     assert seen["kw"]["sockets"][0].fileno() == -1  # 終わったら閉じる

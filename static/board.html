@@ -108,29 +108,36 @@
   <div id="documents" class="overlay" hidden>
     <div class="docs-head">
       <div id="docs-title"></div>
-      <div class="docs-head-actions">
-        <button id="docs-back" class="opt" type="button" hidden>一覧へ</button>
-        <button id="docs-close" class="opt" type="button">閉じる</button>
-      </div>
     </div>
     <div id="doc-list"></div>
     <div id="doc-viewer" hidden>
-      <div class="viewer-bar">
-        <button id="doc-prev" class="opt" type="button">◀</button>
-        <span id="doc-page"></span>
-        <button id="doc-next" class="opt" type="button">▶</button>
-        <button id="doc-zoom-out" class="opt" type="button">－</button>
-        <button id="doc-zoom-in" class="opt" type="button">＋</button>
-      </div>
       <div id="doc-canvas-wrap"><canvas id="doc-canvas"></canvas></div>
     </div>
     <div id="doc-grid-view" hidden>
-      <div class="viewer-bar">
-        <button id="grid-prev" class="opt" type="button">◀</button>
-        <span id="grid-range"></span>
-        <button id="grid-next" class="opt" type="button">▶</button>
-      </div>
       <div id="doc-grid"></div>
+    </div>
+    <!-- 75インチのモニタでも手が届くよう、ボタンは画面の下にまとめる（左＝ページの操作、右＝一覧へ・閉じる） -->
+    <div class="docs-foot">
+      <div class="docs-foot-left">
+        <div id="doc-nav" hidden>
+          <button id="doc-prev" class="opt" type="button">◀</button>
+          <span id="doc-page" class="foot-count"></span>
+          <button id="doc-next" class="opt" type="button">▶</button>
+          <button id="doc-zoom-out" class="opt" type="button">－</button>
+          <button id="doc-zoom-in" class="opt" type="button">＋</button>
+          <button id="doc-pages-grid" class="opt foot-main" type="button">6枚ずつ表示（3×2）</button>
+        </div>
+        <div id="grid-nav" hidden>
+          <button id="grid-prev" class="opt" type="button">◀</button>
+          <span id="grid-range" class="foot-count"></span>
+          <button id="grid-next" class="opt" type="button">▶</button>
+          <button id="grid-single" class="opt foot-main" type="button" hidden>1枚ずつ表示</button>
+        </div>
+      </div>
+      <div class="docs-foot-right">
+        <button id="docs-back" class="opt" type="button" hidden>一覧へ</button>
+        <button id="docs-close" class="opt" type="button">閉じる</button>
+      </div>
     </div>
   </div>
 
@@ -209,6 +216,9 @@
         <p class="setting-title">配色</p>
         <label class="radio"><input type="radio" name="theme" value="light"> 明るい</label>
         <label class="radio"><input type="radio" name="theme" value="dark"> 暗い</label>
+        <p class="setting-title">文書のページを覚える</p>
+        <label class="radio"><input type="radio" name="doc-memory" value="on"> 覚える（同じ文書を開くと、前に見ていたページ・拡大率・位置から始める）</label>
+        <label class="radio"><input type="radio" name="doc-memory" value="off"> 覚えない（いつも1ページ目・拡大なしで始める）</label>
 
         <h4 class="group-title">全端末共通（サーバーに保存。保存すると全部の画面に反映）</h4>
         <div id="admin-key-row" class="field-line" hidden>

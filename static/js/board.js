@@ -1,6 +1,7 @@
 import { api } from "./api.js";
 import { pickOption, inputText, confirmBox, alertBox } from "./picker.js";
 import { inputNumber } from "./picker.js";
+import { applyLocal } from "./optimistic.mjs";
 import { formatRange, formatRangeOrDash, orDash, contactText, visibleHolidayRows, worksFor } from "./timeutil.mjs";
 import { isUhd } from "./timeutil.mjs";
 import { setPlaylist, setSeconds, pause as pauseAccident, resume as resumeAccident } from "./accident.js";
@@ -319,15 +320,24 @@ async function refresh() {
   render();
 }
 
+// 押した値を先に画面へ出してから保存し、そのあと取り直す（回線が遅くても、押した手応えをすぐ返す）。
+// 保存に失敗したら、取り直しで元の内容に戻り、知らせが出る
+let saving = 0;
 async function save(method, url, body) {
+  saving++;
   try {
-    await api(method, url, body);
-  } catch (e) {
-    showToast("保存できませんでした: " + e.message);
+    if (applyLocal(state, method, url, body)) render();
+    try {
+      await api(method, url, body);
+    } catch (e) {
+      showToast("保存できませんでした: " + e.message);
+    }
+    try {
+      await refresh();
+    } catch (_) {}
+  } finally {
+    saving--;
   }
-  try {
-    await refresh();
-  } catch (_) {}
 }
 
 async function removeRow(url) {
@@ -338,7 +348,8 @@ async function removeRow(url) {
 async function poll() {
   try {
     const r = await api("GET", "/api/rev");
-    if (r.rev !== lastRev || r.today !== lastToday) {
+    // 保存の途中は取り直さない（押したばかりの値が、保存前の古い内容で一瞬戻らないように。保存のあとで取り直す）
+    if (!saving && (r.rev !== lastRev || r.today !== lastToday)) {
       await refresh();
       lastRev = r.rev;
     } else {
@@ -436,15 +447,16 @@ async function editWorkers(row) {
   await save("PATCH", `/api/schedule/${row.id}`, { workers: v });
 }
 
+// 開始時刻、続けて終了時刻を選ぶ。2つの窓は見出しの色と番号を変えて、いまどちらを選んでいるかすぐ分かるようにする
 async function editTimes(url, row) {
   const times = state.masters.times;
-  const start = await pickOption({ title: "開始時刻", options: times, current: row.start_time });
+  const start = await pickOption({ title: "① 開始時刻を選ぶ", titleCls: "title-start", options: times, current: row.start_time });
   if (start === undefined) return;
   if (start === "") {
     await save("PATCH", url, { start_time: "", end_time: "" });
     return;
   }
-  const end = await pickOption({ title: "終了時刻", options: times, current: row.end_time });
+  const end = await pickOption({ title: `② 終了時刻を選ぶ（開始 ${start}）`, titleCls: "title-end", options: times, current: row.end_time });
   if (end === undefined) return;
   await save("PATCH", url, { start_time: start, end_time: end });
 }

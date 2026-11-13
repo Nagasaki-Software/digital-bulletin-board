@@ -33,10 +33,11 @@ const TYPE_IT = Symbol("type");
 export const FREE_TEXT_MAX = 30; // サーバー（app.py の FREE_TEXT_MAX）と同じ
 
 // allowText: 選択肢の最後に「その他（手入力）」を出し、押したらキーボードで入力する窓を開く
-export async function pickOption({ title, options, current = "", allowClear = true, allowText = false }) {
+// titleCls: 見出しの色分け（開始時刻・終了時刻など）
+export async function pickOption({ title, options, current = "", allowClear = true, allowText = false, titleCls = "" }) {
   const values = options.map(o => (typeof o === "string" ? o : o.value));
   const v = await open((panel, close) => {
-    panel.appendChild(el("h3", "", title));
+    panel.appendChild(el("h3", titleCls, title));
     const grid = el("div", "options");
     for (const o of options) {
       const value = typeof o === "string" ? o : o.value;

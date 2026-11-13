@@ -177,11 +177,15 @@ html.uhd #equipment-wrap { max-height: calc(3.5rem + 3 * 4.25rem + 6px); }
 .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 10;
            background: var(--overlay); }
 .overlay[hidden] { display: none; }
-.panel { display: flex; flex-direction: column; min-width: 30rem; max-width: 80vw; max-height: 85vh; padding: 1.5rem 2rem;
+.panel { display: flex; flex-direction: column; min-width: 46rem; max-width: 90vw; max-height: 90vh; padding: 1.8rem 2.2rem;
          font-size: 1.4rem; color: var(--text); background: var(--card); border: 2px solid var(--border); border-radius: 1rem; }
-.panel h3 { margin: 0 0 1rem; font-size: 1.8rem; font-weight: 700; }
-.options { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: .8rem; overflow-y: auto; }
-.opt { min-height: 4rem; padding: 0 1rem; font-size: 1.5rem; color: var(--text); background: var(--btn-bg);
+.panel h3 { margin: 0 0 1.2rem; font-size: 2.3rem; font-weight: 700; }
+/* 開始時刻・終了時刻の窓は、見出しを色の帯にして見分けやすくする（開始は青、終了はオレンジ） */
+.panel h3.title-start, .panel h3.title-end { padding: .4rem 1rem; color: #FFFFFF; border-radius: .5rem; }
+.panel h3.title-start { background: #1D4ED8; }
+.panel h3.title-end { background: #C2410C; }
+.options { display: grid; grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr)); gap: 1rem; overflow-y: auto; }
+.opt { min-height: 5.5rem; padding: 0 1.2rem; font-size: 2rem; color: var(--text); background: var(--btn-bg);
        border: 2px solid var(--btn-border); border-radius: .6rem; }
 .opt.current { color: var(--chip-on-text); background: var(--chip-on-bg); border-color: var(--chip-on-border); }
 .opt.type-it { border-style: dashed; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -265,15 +269,23 @@ html.uhd #equipment-wrap { max-height: calc(3.5rem + 3 * 4.25rem + 6px); }
 #wb-text { position: absolute; z-index: 2; min-width: 12rem; padding: 0; margin: 0; line-height: 1.2; font-family: "Meiryo", "メイリオ", "Yu Gothic UI", sans-serif; background: rgba(255, 255, 255, .85); border: 1px dashed #2563EB; outline: none; user-select: text; -webkit-user-select: text; }
 #wb-text[hidden], #wb-warn[hidden], #wb-msg[hidden] { display: none; }
 #link-frame { flex: 1; min-height: 0; width: 100%; border: 0; background: #FFFFFF; }
-#doc-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(24rem, 1fr)); gap: 1rem; align-content: start;
-            padding: 2rem; overflow-y: auto; font-size: 1.6rem; }
+/* 一覧は画面のまん中に置く（モニタの上のほうは、背の低い人の手が届かないため） */
+#doc-list { display: flex; align-items: center; justify-content: center; flex: 1; min-height: 0; padding: 2rem; overflow-y: auto; font-size: 1.6rem; }
+.doc-list-inner { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.2rem; width: min(120rem, 100%); max-height: 100%; }
+.doc-list-msg { font-size: 2rem; color: var(--muted); }
 #doc-list[hidden], #doc-viewer[hidden] { display: none; }
 .doc-item { min-height: 5rem; }
 #doc-viewer { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.viewer-bar { display: flex; gap: 1rem; align-items: center; flex: none; padding: .6rem 2rem; font-size: 1.4rem;
-              background: var(--card); }
+/* 画面の下の帯。左＝ページの操作、右＝一覧へ・閉じる */
+.docs-foot { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex: none; padding: 1rem 2rem;
+             background: var(--card); border-top: 2px solid var(--border); }
+.docs-foot-left, .docs-foot-right, #doc-nav, #grid-nav { display: flex; align-items: center; gap: 1rem; }
+#doc-nav[hidden], #grid-nav[hidden], #grid-single[hidden], #doc-pages-grid[hidden], #docs-back[hidden] { display: none; }
+.docs-foot .opt { min-width: 6rem; }
+.foot-count { min-width: 10rem; padding: 0 .5rem; font-size: 1.8rem; text-align: center; white-space: nowrap; }
+.foot-main { font-weight: 700; color: var(--chip-on-text); border-color: var(--chip-on-border); }
 #doc-canvas-wrap { flex: 1; overflow: auto; text-align: center; background: #777777; touch-action: pan-x pan-y; }
-.doc-grid-btn { grid-column: 1 / -1; min-height: 5rem; font-weight: 700; color: var(--chip-on-text); border-color: var(--chip-on-border); }
+.doc-grid-btn { grid-column: 1 / -1; min-height: 5.5rem; font-weight: 700; color: var(--chip-on-text); border-color: var(--chip-on-border); }
 .opt:disabled { opacity: .4; }
 #doc-grid-view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 #doc-grid-view[hidden] { display: none; }

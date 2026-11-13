@@ -258,11 +258,27 @@ def test_notices_cannot_go_below_three(db):
     assert db.delete_notice(999) is False
 
 
-def test_notices_are_not_carried_over(db):
+def test_notices_are_carried_over(db):
     db.ensure_day(D1)
-    db.update_notice(db.list_notices(D1)[0]["id"], {"text": "昨日の連絡"})
+    db.add_notice(D1)
+    rows = db.list_notices(D1)
+    db.update_notice(rows[0]["id"], {"text": "昨日の連絡", "red": True})
+    db.update_notice(rows[3]["id"], {"text": "4行目"})
     db.ensure_day(D2)
-    assert [r["text"] for r in db.list_notices(D2)] == ["", "", ""]
+    after = db.list_notices(D2)
+    assert [(r["position"], r["text"], r["red"]) for r in after] == [
+        (1, "昨日の連絡", True), (2, "", False), (3, "", False), (4, "4行目", False)]
+    assert {r["id"] for r in after}.isdisjoint(r["id"] for r in rows)  # 別の行として写す
+    db.update_notice(after[0]["id"], {"text": "今日だけ"})
+    assert db.list_notices(D1)[0]["text"] == "昨日の連絡"
+
+
+def test_notices_carry_over_across_weekend_and_start_empty_without_history(db):
+    db.ensure_day(D1)
+    assert [r["text"] for r in db.list_notices(D1)] == ["", "", ""]
+    db.update_notice(db.list_notices(D1)[0]["id"], {"text": "金曜の連絡"})
+    db.ensure_day(MONDAY_AFTER)
+    assert db.list_notices(MONDAY_AFTER)[0]["text"] == "金曜の連絡"
 
 
 def test_genres_toggle_and_carry_over(db):

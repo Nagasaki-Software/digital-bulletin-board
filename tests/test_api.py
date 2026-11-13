@@ -166,6 +166,16 @@ def test_notices_add_patch_delete(env):
     assert after[2]["text"] == "避難訓練"
 
 
+def test_notices_carry_over_next_day(env):
+    c, clock, _ = env
+    first = board(c)["notices"][0]["id"]
+    c.patch(f"/api/notices/{first}", json={"text": "避難訓練", "red": True})
+    clock["today"] = date(2026, 11, 3)
+    notices = board(c)["notices"]
+    assert [(n["text"], n["red"]) for n in notices] == [("避難訓練", True), ("", False), ("", False)]
+    assert notices[0]["id"] != first
+
+
 def test_notices_cannot_be_deleted_below_three(env):
     c, _, _ = env
     first = board(c)["notices"][0]["id"]
@@ -263,7 +273,7 @@ def test_accident_playlist(env):
     c.post("/api/genres/toggle", json={"name": "溶接作業", "checked": True})
     b = board(c)
     assert [a["name"] for a in b["accident"]] == ["溶接作業_a.pdf", "溶接作業_b.pdf"]
-    assert b["accident"][0]["url"] == "/api/accident/file/" + quote("溶接作業_a.pdf")
+    assert b["accident"][0]["url"].startswith("/api/accident/file/" + quote("溶接作業_a.pdf") + "?v=")  # 版つき（差し替えたら読み直す）
     assert c.get(b["accident"][0]["url"]).status_code == 200
     assert c.get("/api/accident/file/" + quote("存在しない.pdf")).status_code == 404
 

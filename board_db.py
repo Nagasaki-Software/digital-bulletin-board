@@ -119,10 +119,19 @@ class BoardDB:
                 c.execute("UPDATE days SET genres_initialized = 1 WHERE date = ?", (d,))
                 changed = True
             if not flags["n"]:
-                c.executemany(
-                    "INSERT INTO notice_rows(date, position) VALUES (?, ?)",
-                    [(d, i) for i in range(1, MIN_NOTICES + 1)],
-                )
+                # 連絡事項も、いちばん最近の日の行を写して始める（無ければ空の3行）
+                prev = c.execute("SELECT MAX(date) AS m FROM notice_rows WHERE date < ?", (d,)).fetchone()["m"]
+                if prev:
+                    c.execute(
+                        "INSERT INTO notice_rows(date, position, text, red) "
+                        "SELECT ?, position, text, red FROM notice_rows WHERE date = ? ORDER BY position",
+                        (d, prev),
+                    )
+                else:
+                    c.executemany(
+                        "INSERT INTO notice_rows(date, position) VALUES (?, ?)",
+                        [(d, i) for i in range(1, MIN_NOTICES + 1)],
+                    )
                 c.execute("UPDATE days SET notices_initialized = 1 WHERE date = ?", (d,))
                 changed = True
             if c.execute("INSERT OR IGNORE INTO equipment_seeded(date) VALUES (?)", (d,)).rowcount:

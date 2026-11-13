@@ -280,3 +280,97 @@ def test_settings_screen_has_the_three_data_folders(tmp_path):
         assert f'id="{ident}"' in html, ident
         assert f'$("{ident}").value = s.{key} || "";' in js, ident
         assert f'{key}: $("{ident}").value.trim(),' in js, ident
+
+
+def test_buttons_change_on_screen_before_the_server_answers(tmp_path):
+    c = create_app(tmp_path).test_client()
+    js = c.get("/js/board.js").get_data(as_text=True)
+    assert c.get("/js/optimistic.mjs").status_code == 200
+    save = js[js.index("async function save("):]
+    save = save[:save.index("\n}\n")]
+    # 押した値を先に画面へ出してから保存する。保存中は、3秒ごとの取り直しで古い内容に戻さない
+    assert save.index("applyLocal(state, method, url, body)") < save.index("await api(method, url, body)")
+    assert "saving++" in save and "saving--" in save
+    assert "if (!saving && (r.rev !== lastRev" in js[js.index("async function poll("):]
+
+
+def test_accident_pdfs_are_reused_while_unchanged(tmp_path):
+    js = create_app(tmp_path).test_client().get("/js/accident.js").get_data(as_text=True)
+    # 一度読んだ PDF は、ファイルが同じ（url の版が同じ）あいだ使い回す。ジャンルを変えても、表示中の資料が残っていれば続ける
+    assert "const DOC_CACHE_MAX = 6;" in js
+    assert "docCache.get(url)" in js
+    assert "files.findIndex(f => f.url === current)" in js
+
+
+def test_server_handles_eight_requests_at_once():
+    import app as app_module
+    src = open(app_module.__file__, encoding="utf-8").read()
+    assert "threads=8" in src and "threads=4" not in src
+
+
+def test_time_windows_have_colored_numbered_titles(tmp_path):
+    c = create_app(tmp_path).test_client()
+    js = c.get("/js/board.js").get_data(as_text=True)
+    picker = c.get("/js/picker.js").get_data(as_text=True)
+    css = c.get("/board.css").get_data(as_text=True)
+    # 表の欄は1行（8:00～17:00）のまま。押すと、青い「① 開始時刻」、続けてオレンジの「② 終了時刻」の窓が出る
+    edit = js[js.index("async function editTimes("):]
+    edit = edit[:edit.index("\n}\n")]
+    assert '"① 開始時刻を選ぶ", titleCls: "title-start"' in edit
+    assert "`② 終了時刻を選ぶ（開始 ${start}）`, titleCls: \"title-end\"" in edit
+    assert "titleCls" in picker
+    assert ".panel h3.title-start { background: #1D4ED8; }" in css and ".panel h3.title-end { background: #C2410C; }" in css
+    assert ".tcell" not in css
+
+
+def test_picker_window_and_buttons_are_bigger(tmp_path):
+    css = create_app(tmp_path).test_client().get("/board.css").get_data(as_text=True)
+    assert ".panel { display: flex; flex-direction: column; min-width: 46rem; max-width: 90vw; max-height: 90vh;" in css
+    assert ".options { display: grid; grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));" in css
+    assert ".opt { min-height: 5.5rem; padding: 0 1.2rem; font-size: 2rem;" in css
+    assert ".panel h3 { margin: 0 0 1.2rem; font-size: 2.3rem;" in css
+
+
+def test_documents_buttons_are_at_the_bottom_and_the_list_in_the_middle(tmp_path):
+    c = create_app(tmp_path).test_client()
+    html = c.get("/").get_data(as_text=True)
+    css = c.get("/board.css").get_data(as_text=True)
+    docs = html[html.index('id="documents"'):html.index('id="settings"')]
+    # 上の見出しはファイル名だけ。ボタンは画面の下の帯に（左＝ページの操作、右＝一覧へ・閉じる）
+    head = docs[:docs.index("</div>")]
+    assert "docs-close" not in head and "docs-back" not in head
+    foot = docs[docs.index('class="docs-foot"'):]
+    assert foot.index('id="doc-nav"') < foot.index('id="docs-back"') < foot.index('id="docs-close"')
+    for ident in ["doc-prev", "doc-page", "doc-next", "doc-zoom-out", "doc-zoom-in", "doc-pages-grid", "grid-prev", "grid-range", "grid-next", "grid-single"]:
+        assert f'id="{ident}"' in foot, ident
+    # 一覧（6枚ずつ表示とPDFの名前）は画面のまん中
+    assert "#doc-list { display: flex; align-items: center; justify-content: center;" in css
+
+
+def test_a_pdf_can_be_shown_six_pages_at_a_time(tmp_path):
+    js = create_app(tmp_path).test_client().get("/js/documents.js").get_data(as_text=True)
+    assert "async function showPageGrid(start)" in js
+    assert '$("doc-pages-grid").addEventListener("click"' in js
+    # ページのマスを押すと、そのページを1枚で開く。「1枚ずつ表示」で戻る
+    assert "showViewerAt(n)" in js and '$("grid-single").addEventListener("click"' in js
+    assert 'gridMode === "pages"' in js
+
+
+def test_documents_can_remember_the_page_and_zoom_per_device(tmp_path):
+    c = create_app(tmp_path).test_client()
+    html = c.get("/").get_data(as_text=True)
+    js = c.get("/js/documents.js").get_data(as_text=True)
+    assert c.get("/js/docmemory.mjs").status_code == 200
+    local = html[html.index("この端末だけ"):html.index("全端末共通")]
+    assert 'name="doc-memory" value="on"' in local and 'name="doc-memory" value="off"' in local
+    assert 'const MEMORY_KEY = "dbb.docMemory";' in js and 'const POS_KEY = "dbb.docPos";' in js
+    # 覚えるのは、閉じる・一覧へ戻る・別の文書を開く・操作なしで戻るとき。PDF の指紋が違えば1ページ目から
+    assert js.count("saveCurrentPos()") >= 3
+    assert "doc.fingerprints[0]" in js
+
+
+def test_a_folder_with_one_pdf_opens_it_without_the_list(tmp_path):
+    js = create_app(tmp_path).test_client().get("/js/documents.js").get_data(as_text=True)
+    assert "if (files.length === 1) {" in js and "openFile(files[0]);" in js
+    # 1件だけのときは「一覧へ」を押しても同じPDFに戻るだけなので、出さない
+    assert '$("docs-back").hidden = view === "list" || (view === "viewer" && !fromGrid && folderFiles.length === 1);' in js

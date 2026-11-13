@@ -1,5 +1,6 @@
 import * as pdfjsLib from "/pdfjs/pdf.mjs";
 import { api } from "./api.js";
+import { rememberPos, recallPos } from "./docmemory.mjs";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.mjs";
 
@@ -28,6 +29,53 @@ let folderFiles = [];
 let gridStart = 0;
 let fromGrid = false; // 1枚表示を 3×2 から開いたか（「戻る」の行き先）
 let gridJobs = []; // 3×2 の各マスの読み込み。切り替え・閉じるときに止める
+let gridMode = "files"; // 3×2 に並べているもの。"files"＝フォルダの各PDFの1ページ目、"pages"＝開いているPDFのページ
+let pageGridStart = 0;
+let currentFile = ""; // 1枚表示で開いている PDF の名前（ページを覚えるときの名前）
+let lastScroll = { sx: 0, sy: 0 };
+
+// ---- ページ・拡大率・位置を覚える（この端末だけ。設定の「文書のページを覚える」） ----
+const MEMORY_KEY = "dbb.docMemory";
+const POS_KEY = "dbb.docPos";
+
+function memoryOn() {
+  try {
+    return localStorage.getItem(MEMORY_KEY) === "on";
+  } catch (_) {
+    return false;
+  }
+}
+
+function readPosStore() {
+  try {
+    return JSON.parse(localStorage.getItem(POS_KEY) || "{}");
+  } catch (_) {
+    return {};
+  }
+}
+
+const posKey = name => `${currentIndex}/${name}`;
+
+// 閉じる・一覧へ戻る・別の文書を開く・操作なしで戻るときに呼ぶ
+function saveCurrentPos() {
+  if (!memoryOn() || !doc || !currentFile) return;
+  try {
+    const store = rememberPos(readPosStore(), posKey(currentFile), { fp: doc.fingerprints[0], page: pageNum, zoom, ...lastScroll });
+    localStorage.setItem(POS_KEY, JSON.stringify(store));
+  } catch (_) {}
+}
+
+// 一覧・1枚表示・3×2 の切り替え。下の帯のボタンも、その画面で使うものだけを出す
+function setView(view) {
+  $("doc-list").hidden = view !== "list";
+  $("doc-viewer").hidden = view !== "viewer";
+  $("doc-grid-view").hidden = view !== "grid";
+  $("doc-nav").hidden = view !== "viewer";
+  $("grid-nav").hidden = view !== "grid";
+  $("grid-single").hidden = !(view === "grid" && gridMode === "pages");
+  $("docs-back").hidden = view === "list" || (view === "viewer" && !fromGrid && folderFiles.length === 1);
+  $("docs-back").textContent = fromGrid ? "戻る" : "一覧へ";
+}
 
 const wrap = $("doc-canvas-wrap");
 const msg = document.createElement("div");
@@ -107,8 +155,10 @@ function cancelGrid() {
 }
 
 export function closeDocuments() {
+  saveCurrentPos();
   clearTimeout(idleTimer);
   token++;
+  currentFile = "";
   cancelLoad();
   dropDoc();
   cancelGrid();
@@ -139,9 +189,11 @@ export function renderDocButtons(buttons, idle) {
 }
 
 async function openFolder(index, label) {
+  saveCurrentPos();
   const my = ++token;
   currentIndex = index;
   currentLabel = label;
+  currentFile = "";
   cancelLoad();
   dropDoc();
   cancelGrid();
@@ -150,12 +202,12 @@ async function openFolder(index, label) {
   folderFiles = [];
   $("documents").hidden = false;
   $("docs-title").textContent = label;
-  $("docs-back").hidden = true;
-  $("doc-viewer").hidden = true;
-  $("doc-grid-view").hidden = true;
-  const list = $("doc-list");
-  list.hidden = false;
-  list.innerHTML = "";
+  setView("list");
+  const box = $("doc-list");
+  box.innerHTML = "";
+  const list = document.createElement("div");
+  list.className = "doc-list-inner";
+  box.appendChild(list);
   resetIdle();
   let files = [];
   let failed = false;
@@ -167,10 +219,18 @@ async function openFolder(index, label) {
   }
   if (my !== token) return;
   if (!files.length) {
-    list.textContent = failed ? "文書の一覧を読み込めません" : "文書がありません";
+    box.innerHTML = "";
+    const m = document.createElement("div");
+    m.className = "doc-list-msg";
+    m.textContent = failed ? "文書の一覧を読み込めません" : "文書がありません";
+    box.appendChild(m);
     return;
   }
   folderFiles = files;
+  if (files.length === 1) {
+    openFile(files[0]);
+    return;
+  }
   if (files.length > 1) {
     const g = document.createElement("button");
     g.type = "button";
@@ -190,19 +250,19 @@ async function openFolder(index, label) {
 }
 
 async function openFile(name, viaGrid = false) {
+  saveCurrentPos();
   const my = ++token;
   cancelGrid();
   fromGrid = viaGrid;
-  $("doc-list").hidden = true;
-  $("doc-grid-view").hidden = true;
-  $("doc-viewer").hidden = false;
-  $("docs-back").hidden = false;
-  $("docs-back").textContent = viaGrid ? "戻る" : "一覧へ";
+  currentFile = "";
+  setView("viewer");
+  $("doc-pages-grid").hidden = true;
   $("docs-title").textContent = name.replace(/\.pdf$/i, "");
   $("doc-page").textContent = "読み込み中…";
   showMsg("");
   zoom = 1;
   pageNum = 1;
+  lastScroll = { sx: 0, sy: 0 };
   pinch = null;
   cancelLoad();
   dropDoc();
@@ -216,7 +276,20 @@ async function openFile(name, viaGrid = false) {
     }
     loadTask = null;
     doc = loaded;
+    currentFile = name;
+    $("doc-pages-grid").hidden = doc.numPages < 2;
+    // 前に見ていたページ・拡大率・位置から始める（設定で「覚える」のときだけ。PDF が差し替えられていれば1ページ目から）
+    const pos = memoryOn() ? recallPos(readPosStore(), posKey(name), doc.fingerprints[0], doc.numPages) : null;
+    if (pos) {
+      pageNum = pos.page;
+      zoom = pos.zoom;
+    }
     await renderPage();
+    if (pos && my === token) {
+      wrap.scrollLeft = pos.sx;
+      wrap.scrollTop = pos.sy;
+      lastScroll = { sx: wrap.scrollLeft, sy: wrap.scrollTop };
+    }
   } catch (e) {
     if (my !== token) return;
     console.error("文書の表示に失敗しました", e);
@@ -278,18 +351,17 @@ async function renderPage() {
 
 // 3×2 表示。フォルダの一覧と同じ順に start 番目から6つを並べ、各ファイルの1ページ目だけを描く
 async function showGrid(start) {
+  saveCurrentPos();
   const my = ++token;
   cancelLoad();
   dropDoc();
   cancelGrid();
   pinch = null;
   fromGrid = false;
+  currentFile = "";
+  gridMode = "files";
   gridStart = start;
-  $("doc-list").hidden = true;
-  $("doc-viewer").hidden = true;
-  $("doc-grid-view").hidden = false;
-  $("docs-back").hidden = false;
-  $("docs-back").textContent = "一覧へ";
+  setView("grid");
   $("docs-title").textContent = currentLabel;
   const shown = folderFiles.slice(start, start + GRID_SIZE);
   $("grid-range").textContent = `${start + 1}〜${start + shown.length}枚目 / 全${folderFiles.length}枚`;
@@ -366,6 +438,96 @@ async function renderTile(name, box, my) {
   }
 }
 
+// 開いている PDF のページを 3×2 で並べる（start 番目のページから6つ）。押したページを1枚で開く
+async function showPageGrid(start) {
+  if (!doc) return;
+  const my = ++token;
+  const d = doc;
+  cancelGrid();
+  pinch = null;
+  gridMode = "pages";
+  pageGridStart = start;
+  setView("grid");
+  const end = Math.min(start + GRID_SIZE, d.numPages);
+  $("grid-range").textContent = `${start + 1}〜${end}ページ / 全${d.numPages}ページ`;
+  $("grid-prev").disabled = start === 0;
+  $("grid-next").disabled = end >= d.numPages;
+  const grid = $("doc-grid");
+  const tiles = [];
+  for (let i = 0; i < GRID_SIZE; i++) {
+    const n = start + i + 1;
+    if (n > d.numPages) {
+      const e = document.createElement("div");
+      e.className = "doc-tile empty";
+      grid.appendChild(e);
+      continue;
+    }
+    const t = document.createElement("button");
+    t.type = "button";
+    t.className = "doc-tile";
+    const page = document.createElement("div");
+    page.className = "tile-page";
+    page.textContent = "読み込み中…";
+    const cap = document.createElement("div");
+    cap.className = "tile-name";
+    cap.textContent = `${n}ページ`;
+    t.append(page, cap);
+    t.addEventListener("click", () => showViewerAt(n));
+    grid.appendChild(t);
+    tiles.push([n, page]);
+  }
+  resetIdle();
+  // 1つずつ描く（読み込み済みの PDF を使うので、サーバーへは取りに行かない）
+  for (const [n, page] of tiles) {
+    if (my !== token || d !== doc) return;
+    await renderPageTile(d, n, page, my);
+  }
+}
+
+async function renderPageTile(d, n, box, my) {
+  try {
+    const p = await d.getPage(n);
+    if (my !== token) return;
+    const base = p.getViewport({ scale: 1 });
+    const w = box.clientWidth;
+    const h = box.clientHeight;
+    if (!w || !h) throw new Error("マスの大きさが0です");
+    const vp = p.getViewport({ scale: Math.min(w / base.width, h / base.height) * 0.97 });
+    const ratio = Math.min(window.devicePixelRatio || 1,
+      Math.sqrt(MAX_CANVAS_PIXELS / GRID_SIZE / (vp.width * vp.height)));
+    const c = document.createElement("canvas");
+    c.width = Math.max(1, Math.floor(vp.width * ratio));
+    c.height = Math.max(1, Math.floor(vp.height * ratio));
+    c.style.width = vp.width + "px";
+    c.style.height = vp.height + "px";
+    const ctx = c.getContext("2d");
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    await p.render({ canvasContext: ctx, viewport: vp }).promise;
+    if (my !== token) return;
+    box.textContent = "";
+    box.appendChild(c);
+  } catch (e) {
+    if (my !== token) return;
+    console.error("文書の表示に失敗しました", n, e);
+    box.textContent = FAIL_NOTICE;
+  }
+}
+
+// 3×2 から、そのページを1枚で開く（読み込み済みの PDF をそのまま使う）
+function showViewerAt(n) {
+  if (!doc) return;
+  token++;
+  cancelGrid();
+  pageNum = n;
+  setView("viewer");
+  $("doc-pages-grid").hidden = doc.numPages < 2;
+  wrap.scrollTop = 0;
+  wrap.scrollLeft = 0;
+  lastScroll = { sx: 0, sy: 0 };
+  resetIdle();
+  redraw();
+}
+
 function onRenderError(e) {
   console.error("文書の表示に失敗しました", e);
   $("doc-page").textContent = "";
@@ -387,11 +549,34 @@ $("docs-back").addEventListener("click", () => {
   else openFolder(currentIndex, currentLabel);
 });
 $("grid-prev").addEventListener("click", () => {
-  if (gridStart > 0) showGrid(Math.max(0, gridStart - GRID_SIZE));
+  if (gridMode === "pages") {
+    if (pageGridStart > 0) showPageGrid(Math.max(0, pageGridStart - GRID_SIZE));
+  } else if (gridStart > 0) showGrid(Math.max(0, gridStart - GRID_SIZE));
 });
 $("grid-next").addEventListener("click", () => {
-  if (gridStart + GRID_SIZE < folderFiles.length) showGrid(gridStart + GRID_SIZE);
+  if (gridMode === "pages") {
+    if (doc && pageGridStart + GRID_SIZE < doc.numPages) showPageGrid(pageGridStart + GRID_SIZE);
+  } else if (gridStart + GRID_SIZE < folderFiles.length) showGrid(gridStart + GRID_SIZE);
 });
+$("doc-pages-grid").addEventListener("click", () => {
+  if (doc) showPageGrid(Math.floor((pageNum - 1) / GRID_SIZE) * GRID_SIZE);
+});
+$("grid-single").addEventListener("click", () => showViewerAt(pageNum));
+wrap.addEventListener("scroll", () => {
+  if (!$("doc-viewer").hidden) lastScroll = { sx: wrap.scrollLeft, sy: wrap.scrollTop };
+}, { passive: true });
+
+// 設定の「文書のページを覚える」（この端末だけ）
+$("btn-gear").addEventListener("click", () => {
+  for (const r of document.querySelectorAll('input[name="doc-memory"]')) r.checked = r.value === (memoryOn() ? "on" : "off");
+});
+for (const r of document.querySelectorAll('input[name="doc-memory"]')) {
+  r.addEventListener("change", () => {
+    try {
+      localStorage.setItem(MEMORY_KEY, r.value === "on" ? "on" : "off");
+    } catch (_) {}
+  });
+}
 $("doc-prev").addEventListener("click", () => {
   if (doc && pageNum > 1) {
     pageNum--;
