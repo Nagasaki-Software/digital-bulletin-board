@@ -244,8 +244,15 @@ def test_uhd_screen_uses_smaller_text_and_three_equipment_rows(tmp_path):
     # 4K では文字を 85%、機器使用予定を3行分にする（HD は今のまま）
     assert "html.uhd { font-size: calc(100vw / 180 * 0.85); }" in css
     assert "html.uhd #equipment-wrap { max-height: calc(3.5rem + 3 * 4.25rem + 6px); }" in css
-    # 4K では連絡事項も3行分にする
-    assert "html.uhd #notices { max-height: calc(3 * 3.5rem + 6px); }" in css
+    # 連絡事項は HD・4K とも最低2行。文字のある最後の行までは全部見せ、その分だけ作業予定の枠が縮む
+    assert "html.uhd #notices" not in css
+    notices_css = css[css.index("#notices {"):css.index("}", css.index("#notices {"))]
+    assert "max-height" not in notices_css and "overflow" not in notices_css  # 全部見せる。スクロールしない
+    assert "shownNoticeRows(state.notices, uhd() ? 3 : 2)" in js  # 最初は HD 2行・4K 3行
+    html = c.get("/").get_data(as_text=True)
+    assert "btn-add-notice" not in html and "btn-add-notice" not in js  # 空欄の行は自動で足すので、追加ボタンは無い
+    # 消すときは、機器使用予定と同じ ✕（編集中だけ出る。確認の窓を出してから消す）
+    assert 'line.appendChild(actBtn("✕", e => {' in js and "removeRow(`/api/notices/${n.id}`);" in js
     assert 'classList.toggle("uhd", isUhd(screen.width, devicePixelRatio))' in js
     assert "uhd() ? 3 : 2" in js
     # 本日の作業予定：作業内容を狭くし、工事件名を広げる（作業者数の列を足したあとの幅）

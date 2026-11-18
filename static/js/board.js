@@ -3,7 +3,7 @@ import { pickOption, inputText, confirmBox, alertBox } from "./picker.js";
 import { inputNumber } from "./picker.js";
 import { applyLocal } from "./optimistic.mjs";
 import { formatRange, formatRangeOrDash, orDash, contactText, visibleHolidayRows, worksFor } from "./timeutil.mjs";
-import { isUhd } from "./timeutil.mjs";
+import { isUhd, shownNoticeRows } from "./timeutil.mjs";
 import { setPlaylist, setSeconds, pause as pauseAccident, resume as resumeAccident } from "./accident.js";
 import { renderDocButtons, closeDocuments } from "./documents.js";
 import { renderLinkButtons, closeLink, initLinks } from "./links.js";
@@ -28,7 +28,10 @@ function applyScreenSize() {
   document.documentElement.classList.toggle("uhd", isUhd(screen.width, devicePixelRatio));
 }
 applyScreenSize();
-addEventListener("resize", applyScreenSize);
+addEventListener("resize", () => {
+  applyScreenSize();
+  if (state) renderNotices();
+});
 const uhd = () => document.documentElement.classList.contains("uhd");
 const minEquipmentRows = () => (uhd() ? 3 : 2);
 let state = null;
@@ -147,26 +150,23 @@ function renderHeader() {
 }
 
 function renderNotices() {
+  // 全部の行を見せる（スクロールしない）。増えた分だけ、本日の作業予定の枠が縮む。
+  // 文字を消した行はサーバーが詰め、最後の空欄の行に書くと、次の空欄の行をサーバーが足す
   const box = $("notices");
-  const top = box.scrollTop;
   box.innerHTML = "";
-  const removable = state.notices.length > 3;
-  for (const n of state.notices) {
+  for (const n of state.notices.slice(0, shownNoticeRows(state.notices, uhd() ? 3 : 2))) {
     const line = el("div", "notice-line" + (n.red ? " red" : ""));
     if (n.red) line.insertAdjacentHTML("beforeend", ALERT_ICON);
     line.appendChild(el("span", "notice-text", n.text));
-    if (removable) {
-      line.appendChild(actBtn("✕", e => {
-        e.stopPropagation();
-        removeRow(`/api/notices/${n.id}`);
-      }, false, "edit-only"));
-    }
+    line.appendChild(actBtn("✕", e => {
+      e.stopPropagation();
+      removeRow(`/api/notices/${n.id}`);
+    }, false, "edit-only"));
     line.addEventListener("click", () => {
       if (isEditable()) editNotice(n);
     });
     box.appendChild(line);
   }
-  box.scrollTop = top;
 }
 
 function renderSchedule() {
@@ -516,11 +516,6 @@ function guarded(fn) {
 
 initTheme();
 initClock();
-$("btn-add-notice").addEventListener("click", guarded(async () => {
-  await save("POST", "/api/notices");
-  const box = $("notices");
-  box.scrollTop = box.scrollHeight;
-}));
 $("btn-add-equipment").addEventListener("click", guarded(async () => {
   await save("POST", "/api/equipment");
   const box = $("equipment-wrap");

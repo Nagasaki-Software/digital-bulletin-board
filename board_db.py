@@ -134,6 +134,8 @@ class BoardDB:
                     )
                 c.execute("UPDATE days SET notices_initialized = 1 WHERE date = ?", (d,))
                 changed = True
+            if self._tidy_notices(c, d):
+                changed = True
             if c.execute("INSERT OR IGNORE INTO equipment_seeded(date) VALUES (?)", (d,)).rowcount:
                 # その日の最初の1回だけ: 前の日までの行を消して、空の行を用意する
                 c.execute("DELETE FROM equipment_rows WHERE date < ?", (d,))
@@ -151,31 +153,62 @@ class BoardDB:
             rows = c.execute("SELECT * FROM notice_rows WHERE date = ? ORDER BY position", (d,)).fetchall()
         return [{**dict(r), "red": bool(r["red"])} for r in rows]
 
+    @staticmethod
+    def _tidy_notices(c, d):
+        """文字のある行を上に詰め、最後に空欄の行を1つだけ置く（全部で3行より少なくはしない）。変えたら True"""
+        rows = [dict(r) for r in c.execute(
+            "SELECT id, position, text, red FROM notice_rows WHERE date = ? ORDER BY position", (d,))]
+        filled = [r for r in rows if r["text"] != ""]
+        empties = [r for r in rows if r["text"] == ""]
+        keep = max(MIN_NOTICES, len(filled) + 1) - len(filled)
+        changed = False
+        for r in empties[keep:]:
+            c.execute("DELETE FROM notice_rows WHERE id = ?", (r["id"],))
+            changed = True
+        for _ in range(keep - len(empties)):
+            cur = c.execute("INSERT INTO notice_rows(date, position) VALUES (?, 0)", (d,))
+            empties.append({"id": cur.lastrowid, "position": 0, "red": 0})
+            changed = True
+        for pos, r in enumerate(filled + empties[:keep], start=1):
+            red = r["red"] if r in filled else 0
+            if r["position"] != pos or r["red"] != red:
+                c.execute("UPDATE notice_rows SET position = ?, red = ? WHERE id = ?", (pos, red, r["id"]))
+                changed = True
+        return changed
+
     def add_notice(self, d):
+        # 書き込み用の空欄の行は、いつも最後に1つある。それを返す
         with self._tx() as c:
-            pos = c.execute(
-                "SELECT COALESCE(MAX(position), 0) + 1 AS p FROM notice_rows WHERE date = ?", (d,)
-            ).fetchone()["p"]
-            cur = c.execute("INSERT INTO notice_rows(date, position) VALUES (?, ?)", (d, pos))
-            self._bump(c)
-            return cur.lastrowid
+            if self._tidy_notices(c, d):
+                self._bump(c)
+            return c.execute(
+                "SELECT id FROM notice_rows WHERE date = ? AND text = '' ORDER BY position LIMIT 1", (d,)
+            ).fetchone()["id"]
 
     def update_notice(self, row_id, fields):
-        return self._update("notice_rows", NOTICE_FIELDS, row_id, fields)
+        bad = [k for k in fields if k not in NOTICE_FIELDS]
+        if bad:
+            raise ValueError(f"更新できない列: {bad}")
+        if not fields:
+            return False
+        sets = ", ".join(f"{k} = ?" for k in fields)
+        with self._tx() as c:
+            row = c.execute("SELECT date FROM notice_rows WHERE id = ?", (row_id,)).fetchone()
+            if not row:
+                return False
+            c.execute(f"UPDATE notice_rows SET {sets} WHERE id = ?", (*fields.values(), row_id))
+            self._tidy_notices(c, row["date"])
+            self._bump(c)
+            return True
 
     def delete_notice(self, row_id):
         with self._tx() as c:
             row = c.execute("SELECT date, position FROM notice_rows WHERE id = ?", (row_id,)).fetchone()
             if not row:
                 return False
-            count = c.execute("SELECT COUNT(*) AS n FROM notice_rows WHERE date = ?", (row["date"],)).fetchone()["n"]
-            if count <= MIN_NOTICES:
-                raise ValueError("連絡事項は3行より少なくできません")
+            # 3行より少なくなる分と、最後の空欄の行は、_tidy_notices が補う
             c.execute("DELETE FROM notice_rows WHERE id = ?", (row_id,))
-            c.execute(
-                "UPDATE notice_rows SET position = position - 1 WHERE date = ? AND position > ?",
-                (row["date"], row["position"]),
-            )
+            self._tidy_notices(c, row["date"])
             self._bump(c)
             return True
 

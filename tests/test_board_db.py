@@ -236,39 +236,82 @@ def test_notices_start_with_three_empty_rows(db):
     assert all(r["text"] == "" and r["red"] is False for r in rows)
 
 
-def test_notice_add_update_delete_compacts(db):
-    db.ensure_day(D1)
-    new_id = db.add_notice(D1)
-    assert [r["position"] for r in db.list_notices(D1)] == [1, 2, 3, 4]
-    assert db.update_notice(new_id, {"text": "避難訓練", "red": True}) is True
-    rows = db.list_notices(D1)
-    assert (rows[3]["text"], rows[3]["red"]) == ("避難訓練", True)
-    assert db.delete_notice(rows[1]["id"]) is True
-    after = db.list_notices(D1)
-    assert [r["position"] for r in after] == [1, 2, 3]
-    assert after[2]["text"] == "避難訓練"
+def texts(db, d):
+    return [r["text"] for r in db.list_notices(d)]
 
 
-def test_notices_cannot_go_below_three(db):
+def test_writing_the_last_empty_row_adds_one_empty_row(db):
     db.ensure_day(D1)
+    ids = [r["id"] for r in db.list_notices(D1)]
+    db.update_notice(ids[0], {"text": "a"})
+    db.update_notice(ids[1], {"text": "b"})
+    assert texts(db, D1) == ["a", "b", ""]
+    db.update_notice(ids[2], {"text": "c", "red": True})
+    assert texts(db, D1) == ["a", "b", "c", ""]
     rows = db.list_notices(D1)
-    with pytest.raises(ValueError):
-        db.delete_notice(rows[0]["id"])
-    assert len(db.list_notices(D1)) == 3
+    db.update_notice(rows[3]["id"], {"text": "d"})
+    assert texts(db, D1) == ["a", "b", "c", "d", ""]
+    assert [r["position"] for r in db.list_notices(D1)] == [1, 2, 3, 4, 5]
+
+
+def test_clearing_a_row_closes_the_gap_and_keeps_one_empty_row(db):
+    db.ensure_day(D1)
+    for t in ["a", "b", "c", "d"]:
+        db.update_notice(db.list_notices(D1)[-1]["id"], {"text": t})
+    assert texts(db, D1) == ["a", "b", "c", "d", ""]
+    rows = db.list_notices(D1)
+    db.update_notice(rows[1]["id"], {"text": "", "red": True})
+    assert texts(db, D1) == ["a", "c", "d", ""]
+    assert db.list_notices(D1)[-1]["red"] is False  # 空欄の行は赤字にしない
+    for r in db.list_notices(D1):
+        db.update_notice(r["id"], {"text": ""})
+    assert texts(db, D1) == ["", "", ""]  # 3行より少なくはしない
+
+
+def test_add_notice_gives_the_empty_row_and_delete_keeps_the_rules(db):
+    db.ensure_day(D1)
+    first = db.list_notices(D1)[0]["id"]
+    assert db.add_notice(D1) == first  # 空欄の行があれば、それを返す
+    assert texts(db, D1) == ["", "", ""]
+    for t in ["a", "b", "c"]:
+        db.update_notice(db.add_notice(D1), {"text": t})
+    assert texts(db, D1) == ["a", "b", "c", ""]
+    assert db.delete_notice(db.list_notices(D1)[0]["id"]) is True
+    assert texts(db, D1) == ["b", "c", ""]
+    # 3行しか無くても消せる（足りない分は空欄の行で補う）
+    assert db.delete_notice(db.list_notices(D1)[0]["id"]) is True
+    assert texts(db, D1) == ["c", "", ""]
+    assert db.delete_notice(db.list_notices(D1)[2]["id"]) is True  # 空欄の行を消しても、3行に戻る
+    assert texts(db, D1) == ["c", "", ""]
     assert db.delete_notice(999) is False
+
+
+def test_old_rows_with_gaps_are_tidied_on_the_next_load(db):
+    db.ensure_day(D1)
+    with db._tx() as c:  # 0.8.0 までの形：途中に空欄、最後まで埋まっている
+        c.execute("DELETE FROM notice_rows WHERE date = ?", (D1,))
+        c.executemany("INSERT INTO notice_rows(date, position, text) VALUES (?, ?, ?)",
+                      [(D1, 1, "a"), (D1, 2, ""), (D1, 3, "c"), (D1, 4, "d")])
+    rev = db.get_rev()
+    db.ensure_day(D1)
+    assert texts(db, D1) == ["a", "c", "d", ""]
+    assert db.get_rev() == rev + 1
+    db.ensure_day(D1)
+    assert db.get_rev() == rev + 1  # 整っていれば、何も変えない
 
 
 def test_notices_are_carried_over(db):
     db.ensure_day(D1)
-    db.add_notice(D1)
     rows = db.list_notices(D1)
     db.update_notice(rows[0]["id"], {"text": "昨日の連絡", "red": True})
-    db.update_notice(rows[3]["id"], {"text": "4行目"})
+    db.update_notice(rows[1]["id"], {"text": "2行目"})
+    db.update_notice(rows[2]["id"], {"text": "3行目"})
+    before = db.list_notices(D1)
     db.ensure_day(D2)
     after = db.list_notices(D2)
     assert [(r["position"], r["text"], r["red"]) for r in after] == [
-        (1, "昨日の連絡", True), (2, "", False), (3, "", False), (4, "4行目", False)]
-    assert {r["id"] for r in after}.isdisjoint(r["id"] for r in rows)  # 別の行として写す
+        (1, "昨日の連絡", True), (2, "2行目", False), (3, "3行目", False), (4, "", False)]
+    assert {r["id"] for r in after}.isdisjoint(r["id"] for r in before)  # 別の行として写す
     db.update_notice(after[0]["id"], {"text": "今日だけ"})
     assert db.list_notices(D1)[0]["text"] == "昨日の連絡"
 

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { formatRange, contactText, visibleHolidayRows, formatClock, isUhd } from "../../static/js/timeutil.mjs";
+import { formatRange, contactText, visibleHolidayRows, formatClock, isUhd, shownNoticeRows } from "../../static/js/timeutil.mjs";
 
 test("formatClock は 24 時間・ゼロ埋めの HH:MM", () => {
   assert.equal(formatClock(new Date(2026, 10, 1, 9, 5)), "09:05");
@@ -112,4 +112,20 @@ test("isUhd は画面の実際の横の画素数が 3000 以上で true", () => 
   assert.equal(isUhd(1280, 3), true);    // 4K・拡大 300%
   assert.equal(isUhd(1280, 1.5), false); // HD・拡大 150%
   assert.equal(isUhd(2560, 1), false);   // WQHD
+});
+
+test("shownNoticeRows は最初 base 行。文字のある最後の行と、その下の空欄1行まで見せる", () => {
+  const n = (...texts) => texts.map(text => ({ text }));
+  // HD（base 2）
+  assert.equal(shownNoticeRows(n("", "", ""), 2), 2);
+  assert.equal(shownNoticeRows(n("a", "", ""), 2), 2);
+  assert.equal(shownNoticeRows(n("a", "b", ""), 2), 3);
+  assert.equal(shownNoticeRows(n("a", "b", "c", ""), 2), 4);
+  assert.equal(shownNoticeRows(n("a", "b", "c", "d", "e", ""), 2), 6);
+  // 4K（base 3）
+  assert.equal(shownNoticeRows(n("", "", ""), 3), 3);
+  assert.equal(shownNoticeRows(n("a", "b", ""), 3), 3);
+  assert.equal(shownNoticeRows(n("a", "b", "c", ""), 3), 4);
+  // 行の数より多くは見せない
+  assert.equal(shownNoticeRows(n("a", "b", "c"), 2), 3);
 });

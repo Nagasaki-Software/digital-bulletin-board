@@ -37,6 +37,15 @@ export function isUhd(screenWidth, pixelRatio) {
   return screenWidth * pixelRatio >= 3000;
 }
 
+// 連絡事項に見せる行数：最初は base 行（HD 2行・4K 3行）。文字のある最後の行と、その下の空欄1行までは全部見せる
+export function shownNoticeRows(notices, base) {
+  let last = 0;
+  notices.forEach((n, i) => {
+    if (n.text.trim()) last = i + 1;
+  });
+  return Math.min(notices.length, Math.max(base, last + 1));
+}
+
 export function contactText(ext, outside) {
   const parts = [];
   if (ext) parts.push("内線 " + ext);

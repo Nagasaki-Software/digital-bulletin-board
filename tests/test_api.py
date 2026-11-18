@@ -153,17 +153,15 @@ def test_carry_over_next_day(env):
     assert rows[0]["id"] != first
 
 
-def test_notices_add_patch_delete(env):
+def test_notices_keep_one_empty_row_at_the_end(env):
     c, _, _ = env
-    new_id = c.post("/api/notices").get_json()["id"]
-    assert c.patch(f"/api/notices/{new_id}", json={"text": "避難訓練", "red": True}).status_code == 200
+    ids = [n["id"] for n in board(c)["notices"]]
+    for i, t in enumerate(["避難訓練", "制限速度", "通行止め"]):
+        assert c.patch(f"/api/notices/{ids[i]}", json={"text": t, "red": i == 0}).status_code == 200
     notices = board(c)["notices"]
-    assert len(notices) == 4
-    assert (notices[3]["text"], notices[3]["red"]) == ("避難訓練", True)
-    assert c.delete(f"/api/notices/{notices[0]['id']}").status_code == 200
-    after = board(c)["notices"]
-    assert [n["position"] for n in after] == [1, 2, 3]
-    assert after[2]["text"] == "避難訓練"
+    assert [(n["text"], n["red"]) for n in notices] == [("避難訓練", True), ("制限速度", False), ("通行止め", False), ("", False)]
+    assert c.patch(f"/api/notices/{notices[1]['id']}", json={"text": ""}).status_code == 200
+    assert [n["text"] for n in board(c)["notices"]] == ["避難訓練", "通行止め", ""]
 
 
 def test_notices_carry_over_next_day(env):
@@ -176,10 +174,13 @@ def test_notices_carry_over_next_day(env):
     assert notices[0]["id"] != first
 
 
-def test_notices_cannot_be_deleted_below_three(env):
+def test_notice_delete_button_removes_the_row_and_keeps_three(env):
     c, _, _ = env
     first = board(c)["notices"][0]["id"]
-    assert c.delete(f"/api/notices/{first}").status_code == 400
+    assert c.patch(f"/api/notices/{first}", json={"text": "避難訓練", "red": True}).status_code == 200
+    assert c.delete(f"/api/notices/{first}").status_code == 200
+    assert [(n["text"], n["red"]) for n in board(c)["notices"]] == [("", False)] * 3
+    first = board(c)["notices"][0]["id"]
     assert c.delete("/api/notices/999").status_code == 404
     assert c.patch("/api/notices/999", json={"text": "x"}).status_code == 404
     assert c.patch(f"/api/notices/{first}", json={"text": 5}).status_code == 400
