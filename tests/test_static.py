@@ -381,3 +381,10 @@ def test_a_folder_with_one_pdf_opens_it_without_the_list(tmp_path):
     assert "if (files.length === 1) {" in js and "openFile(files[0]);" in js
     # 1件だけのときは「一覧へ」を押しても同じPDFに戻るだけなので、出さない
     assert '$("docs-back").hidden = view === "list" || (view === "viewer" && !fromGrid && folderFiles.length === 1);' in js
+
+
+def test_holiday_date_stays_on_one_line(tmp_path):
+    # 「12/26(土)」のような日付が、HD でも 4K でも2行に折り返さない
+    c = create_app(tmp_path).test_client()
+    css = c.get("/board.css").get_data(as_text=True)
+    assert "#holidays td:first-child { font-size: 1.05rem; white-space: nowrap; }" in css

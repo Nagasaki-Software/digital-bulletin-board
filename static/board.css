@@ -111,6 +111,7 @@ html.uhd #equipment-wrap { max-height: calc(3.5rem + 3 * 4.25rem + 6px); }
 #holidays .c-act { width: 8%; }
 #holidays .contact { font-size: .9rem; }
 #holidays td.c { white-space: nowrap; }
+#holidays td:first-child { font-size: 1.05rem; white-space: nowrap; } /* 日付は「12/26(土)」でも1行に収める */
 
 .add-btn { flex: none; margin-top: .5rem; min-height: 3rem; font-size: 1.25rem; color: var(--muted);
            border: 2px dashed var(--btn-border); background: var(--card); border-radius: .75rem; }
