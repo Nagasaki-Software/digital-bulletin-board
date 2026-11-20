@@ -744,3 +744,17 @@ def test_schedule_workers_count(env):
     c.patch(f"/api/schedule/{rid}", json={"workers": "0"})
     clock["today"] = date(2026, 11, 3)
     assert board(c)["schedule"][0]["workers"] == "0"
+
+
+def test_monday_holiday_after_weekend_can_be_entered_on_friday(env):
+    c, clock, _ = env
+    clock["today"] = date(2026, 11, 20)
+    b = board(c)
+    assert [w["date"] for w in b["week_holidays"]] == ["2026-11-21", "2026-11-22", "2026-11-23"]
+    assert [r["date"] for r in b["holiday_rows"]] == ["2026-11-21", "2026-11-22", "2026-11-23"]
+    rid = [r for r in b["holiday_rows"] if r["date"] == "2026-11-23"][0]["id"]
+    assert c.patch(f"/api/holiday-rows/{rid}", json={"work": "配線工事"}).status_code == 200
+    # 当日（月曜）も、書いた予定はそのまま出る
+    clock["today"] = date(2026, 11, 23)
+    rows = board(c)["holiday_rows"]
+    assert rows[0]["date"] == "2026-11-23" and rows[0]["work"] == "配線工事"

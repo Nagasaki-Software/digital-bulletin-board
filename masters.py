@@ -316,15 +316,22 @@ def day_title(d):
     return f"{d.year}年{d.month}月{d.day}日（{WEEKDAYS[d.weekday()]}）"
 
 
-def week_range(today):
+def week_range(today, custom=None):
+    # 月〜日。日曜のあとに祝日・会社の休日が続くとき（月曜祝日の3連休、GW、年末年始）は、その連休の終わりまで今週に含める
     monday = today - timedelta(days=today.weekday())
-    return monday, monday + timedelta(days=6)
+    end = monday + timedelta(days=6)
+    for _ in range(14):
+        nxt = end + timedelta(days=1)
+        if holiday_info(nxt, custom or {})["kind"] != "holiday":
+            break
+        end = nxt
+    return monday, end
 
 
 def week_holidays(today, custom):
-    monday, _ = week_range(today)
+    monday, end = week_range(today, custom)
     out = []
-    for i in range(7):
+    for i in range((end - monday).days + 1):
         d = monday + timedelta(days=i)
         info = holiday_info(d, custom)
         if info["kind"]:

@@ -174,3 +174,21 @@ def test_week_holidays_labels():
 
 def test_day_title():
     assert m.day_title(date(2026, 11, 2)) == "2026年11月2日（月）"
+
+
+def test_week_includes_holidays_right_after_sunday():
+    # 11/23(月)勤労感謝の日：金曜の時点で、土日に続く連休として今週に入る
+    assert m.week_range(date(2026, 11, 20), {}) == (date(2026, 11, 16), date(2026, 11, 23))
+    assert [w["label"] for w in m.week_holidays(date(2026, 11, 20), {})] == ["11/21(土)", "11/22(日)", "11/23(月)"]
+    # 当日（月曜）からは、ふだんどおりその週の月〜日
+    assert m.week_range(date(2026, 11, 23), {}) == (date(2026, 11, 23), date(2026, 11, 29))
+
+
+def test_week_extends_through_long_holidays_and_company_holidays():
+    # 2027年GW：5/3(月)〜5/5(水)が祝日。前の週から続けて入る
+    assert m.week_range(date(2027, 4, 30), {})[1] == date(2027, 5, 5)
+    # 会社の休日が続くときも入る（年末年始など）
+    custom = {"2026-12-28": "年末休み", "2026-12-29": "年末休み"}
+    assert m.week_range(date(2026, 12, 25), custom)[1] == date(2026, 12, 29)
+    # 月曜が平日なら日曜まで
+    assert m.week_range(date(2026, 11, 13), {})[1] == date(2026, 11, 15)
