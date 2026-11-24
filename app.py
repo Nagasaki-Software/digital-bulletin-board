@@ -4,6 +4,7 @@ import json
 import logging
 import mimetypes
 import os
+import re
 import secrets
 import socket
 import sys
@@ -26,7 +27,7 @@ import whiteboard as wb
 from board_db import EQUIPMENT_FIELDS, HOLIDAY_FIELDS, SCHEDULE_FIELDS, BoardDB
 from config import DEFAULTS, clean_admin_settings, load_config, save_admin_settings
 
-APP_VERSION = "0.9.1"  # 画面と /api/health に出す。版数の出どころはここだけ
+APP_VERSION = "0.9.2"  # 画面と /api/health に出す。版数の出どころはここだけ
 APP_ID = "digital-bulletin-board"  # /api/health に出す。起動.bat が、隣のポートの別アプリと見分けるのに使う
 PORT_FILE = "server_port.txt"  # 実際に使っているポート番号。起動.bat が読む
 ADMIN_KEY_FILE = "admin_key.txt"
@@ -761,6 +762,43 @@ def create_app(base_dir=None, today_func=date.today, port=None, cfg=None, log_re
             resp.cache_control.no_cache = None  # send_from_directory が付ける「毎回確かめる」を外す
             resp.cache_control.max_age = 86400
         return resp
+
+    # 画面で「この資料は表示できません」が出たとき、その理由を記録に残す（LAN のパソコンで起きたものも、ここに集まる）
+    @app.post("/api/accident/fail-report")
+    def api_accident_fail_report():
+        body = json_body()
+        if not body or not isinstance(body.get("name"), str):
+            return bad("リクエストが正しくありません")
+
+        def one_line(v, n):
+            return re.sub(r"[\x00-\x1f\x7f]+", " ", str(v))[:n]
+
+        def mb(b):
+            return f"{b / 1048576:.1f}MB" if b >= 1048576 else f"{b / 1024:.0f}KB"
+
+        def num(v):
+            return v if isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0 else None
+
+        name = one_line(body["name"], 200)
+        try:
+            size = mb((Path(rt().accident_dir) / name).stat().st_size) if name in acc.list_pdfs(rt().accident_dir) else "ファイルが見つかりません"
+        except OSError:
+            size = "ファイルが見つかりません"
+        # 画面が読んだ版と、いまのファイルの版が違えば、表示中に PDF が置き換えられている
+        if size != "ファイルが見つかりません" and isinstance(body.get("version"), str):
+            size += "、表示中に置き換えあり" if body["version"] != _file_version(rt().accident_dir, name) else ""
+        elapsed, loaded = num(body.get("elapsed_ms")), num(body.get("loaded"))
+        log.warning(
+            "災害事例を表示できませんでした: %s（段階 %s、大きさ %s、受け取れた量 %s、かかった時間 %s、理由 %s、接続元 %s）",
+            name,
+            "ページの表示" if body.get("stage") == "page" else "読み込み",
+            size,
+            mb(loaded) if loaded is not None else "不明",
+            f"{elapsed / 1000:.1f}秒" if elapsed is not None else "不明",
+            one_line(body.get("reason", ""), 300),
+            request.remote_addr,
+        )
+        return jsonify({"ok": True})
 
     def doc_dir(idx):
         dirs = rt().doc_dirs

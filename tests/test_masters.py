@@ -182,6 +182,18 @@ def test_week_includes_holidays_right_after_sunday():
     assert [w["label"] for w in m.week_holidays(date(2026, 11, 20), {})] == ["11/21(土)", "11/22(日)", "11/23(月)"]
     # 当日（月曜）からは、ふだんどおりその週の月〜日
     assert m.week_range(date(2026, 11, 23), {}) == (date(2026, 11, 23), date(2026, 11, 29))
+    # 連休が明けたら、前の週に出した休日（11/23）はもう出さない
+    assert m.week_range(date(2026, 11, 24), {}) == (date(2026, 11, 24), date(2026, 11, 29))
+    assert [w["label"] for w in m.week_holidays(date(2026, 11, 25), {})] == ["11/28(土)", "11/29(日)"]
+
+
+def test_long_holidays_shown_last_week_are_not_shown_again_after_they_end():
+    # 2027年GW：5/3(月)〜5/5(水)は前の週に出している。連休中はそのまま見え、明けた 5/6 からは外れる
+    assert m.week_range(date(2027, 5, 4), {}) == (date(2027, 5, 3), date(2027, 5, 9))
+    assert m.week_range(date(2027, 5, 6), {}) == (date(2027, 5, 6), date(2027, 5, 9))
+    # 会社の休日の連休でも同じ
+    custom = {"2026-12-28": "年末休み", "2026-12-29": "年末休み"}
+    assert m.week_range(date(2026, 12, 30), custom) == (date(2026, 12, 30), date(2027, 1, 3))
 
 
 def test_week_extends_through_long_holidays_and_company_holidays():

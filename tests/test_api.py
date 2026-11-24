@@ -758,3 +758,53 @@ def test_monday_holiday_after_weekend_can_be_entered_on_friday(env):
     clock["today"] = date(2026, 11, 23)
     rows = board(c)["holiday_rows"]
     assert rows[0]["date"] == "2026-11-23" and rows[0]["work"] == "配線工事"
+    # 連休が明けた翌日からは、前の週に出した 11/23 の行は出さない（日付の候補にも出さない）
+    clock["today"] = date(2026, 11, 24)
+    b = board(c)
+    assert [r["date"] for r in b["holiday_rows"]] == ["2026-11-28", "2026-11-29"]
+    assert [w["date"] for w in b["week_holidays"]] == ["2026-11-28", "2026-11-29"]
+    assert c.post("/api/holiday-rows", json={"date": "2026-11-23"}).status_code == 400
+
+
+def test_accident_fail_report_is_written_to_log(env, app_caplog):
+    # LAN のパソコンで「この資料は表示できません」が出たとき、理由をサーバーの記録に残す
+    c, _, base = env
+    (base / "accident_cases" / "溶接作業_a.pdf").write_bytes(b"%PDF-1.4" + b"x" * 2_000_000)
+    r = c.post("/api/accident/fail-report", json={
+        "name": "溶接作業_a.pdf", "reason": "Error: 読み込みがタイムアウトしました", "elapsed_ms": 20012, "loaded": 1_048_576, "stage": "load",
+    }, environ_base={"REMOTE_ADDR": "192.0.2.15"})
+    assert r.status_code == 200
+    line = [x.getMessage() for x in app_caplog.records if "表示できません" in x.getMessage()]
+    assert len(line) == 1
+    s = line[0]
+    assert "溶接作業_a.pdf" in s and "タイムアウト" in s and "20.0秒" in s
+    assert "1.9MB" in s  # ファイルの大きさはサーバーが調べる
+    assert "1.0MB" in s  # 受け取れていた量
+    c.post("/api/accident/fail-report", json={"name": "溶接作業_a.pdf", "loaded": 16500})
+    assert "16KB" in app_caplog.records[-1].getMessage()  # 1MB 未満は KB で書く
+    assert "読み込み" in s and "192.0.2.15" in s
+
+
+def test_accident_fail_report_keeps_one_line_and_rejects_bad_input(env, app_caplog):
+    c, _, base = env
+    assert c.post("/api/accident/fail-report", json={"reason": "x"}).status_code == 400
+    assert c.post("/api/accident/fail-report", data="not json").status_code == 400
+    r = c.post("/api/accident/fail-report", json={"name": "無い.pdf\n[ERROR] 偽の行", "reason": "a\r\nb" + "長" * 1000, "elapsed_ms": "abc", "stage": "page"})
+    assert r.status_code == 200
+    s = [x.getMessage() for x in app_caplog.records if "表示できません" in x.getMessage()][0]
+    assert "\n" not in s and "\r" not in s
+    assert "ファイルが見つかりません" in s and "ページの表示" in s
+    assert len(s) < 800
+
+
+def test_accident_fail_report_tells_if_pdf_was_replaced_while_shown(env, app_caplog):
+    c, _, base = env
+    f = base / "accident_cases" / "溶接作業_a.pdf"
+    f.write_bytes(b"%PDF-1.4 old")
+    c.post("/api/genres/toggle", json={"name": "溶接作業", "checked": True})
+    v = board(c)["accident"][0]["url"].split("?v=")[1]
+    c.post("/api/accident/fail-report", json={"name": "溶接作業_a.pdf", "version": v})
+    assert "置き換え" not in app_caplog.records[-1].getMessage()
+    f.write_bytes(b"%PDF-1.4 new and longer")
+    c.post("/api/accident/fail-report", json={"name": "溶接作業_a.pdf", "version": v})
+    assert "表示中に置き換えあり" in app_caplog.records[-1].getMessage()

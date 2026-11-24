@@ -40,6 +40,23 @@ function cacheDoc(url, d) {
   }
 }
 const FAIL_NOTICE = "この資料は表示できません";
+let loadedBytes = null; // 読み込み中の PDF を、どこまで受け取れたか（失敗の記録に使う）
+
+// 表示できなかった理由を、サーバーの記録（logs/app.log）に残す。送れなくても表示は続ける
+function reportFail(file, e, stage, startedAt) {
+  fetch("/api/accident/fail-report", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: file.name,
+      version: new URL(file.url, location.href).searchParams.get("v"),
+      stage,
+      reason: e ? `${e.name || "Error"}: ${e.message || e}` : "不明",
+      elapsed_ms: Math.round(performance.now() - startedAt),
+      loaded: loadedBytes,
+    }),
+  }).catch(() => {});
+}
 
 // 設定の表示秒数が変わったときだけ、表示中のスライドの数え直しをする（長い秒数から短くしても古い秒数を待たない）。同じ値なら何もしない
 export function setSeconds(s) {
@@ -83,6 +100,10 @@ function loadDoc(url) {
   }
   const task = pdfjsLib.getDocument({ url, cMapUrl: "/pdfjs/cmaps/", cMapPacked: true });
   loadTask = task;
+  loadedBytes = 0;
+  task.onProgress = p => {
+    if (loadTask === task) loadedBytes = p.loaded;
+  };
   let tid;
   const timeout = new Promise((_, reject) => {
     tid = setTimeout(() => reject(new Error("読み込みがタイムアウトしました")), LOAD_TIMEOUT_MS);
@@ -164,6 +185,9 @@ async function show() {
     if (!paused) timer = setTimeout(show, 1000);
     return;
   }
+  const startedAt = performance.now();
+  let stage = "load";
+  loadedBytes = null;
   try {
     if (!doc) {
       const loaded = await loadDoc(list[fileIdx].url);
@@ -174,6 +198,7 @@ async function show() {
       loadTask = null;
       doc = loaded;
     }
+    stage = "page";
     pageNum = Math.min(Math.max(pageNum, 1), doc.numPages);
     const page = await doc.getPage(pageNum);
     if (my !== token) return;
@@ -198,6 +223,7 @@ async function show() {
   } catch (e) {
     if (my !== token || (e && e.name === "RenderingCancelledException")) return;
     console.error("災害事例の表示に失敗しました", e);
+    reportFail(list[fileIdx], e, stage, startedAt);
     cancelLoad();
     forgetDoc();
     canvas.hidden = true;
