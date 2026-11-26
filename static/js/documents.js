@@ -1,8 +1,8 @@
 import * as pdfjsLib from "/pdfjs/pdf.mjs";
+import { pdfWorker } from "./pdfworker.js";
 import { api } from "./api.js";
 import { rememberPos, recallPos } from "./docmemory.mjs";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.mjs";
 
 const $ = id => document.getElementById(id);
 const DOC_ICON =
@@ -124,12 +124,13 @@ function dropDoc() {
 }
 
 function openPdf(url) {
-  const task = pdfjsLib.getDocument({ url, cMapUrl: "/pdfjs/cmaps/", cMapPacked: true });
+  const worker = pdfWorker();
+  const task = pdfjsLib.getDocument({ url, cMapUrl: "/pdfjs/cmaps/", cMapPacked: true, worker });
   let tid;
   const timeout = new Promise((_, reject) => {
     tid = setTimeout(() => reject(new Error("読み込みがタイムアウトしました")), LOAD_TIMEOUT_MS);
   });
-  return { task, promise: Promise.race([task.promise, timeout]).finally(() => clearTimeout(tid)) };
+  return { task, promise: Promise.race([task.promise, worker.failed, timeout]).finally(() => clearTimeout(tid)) };
 }
 
 function loadDoc(url) {

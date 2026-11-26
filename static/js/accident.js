@@ -1,6 +1,5 @@
 import * as pdfjsLib from "/pdfjs/pdf.mjs";
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.mjs";
+import { pdfWorker } from "./pdfworker.js";
 
 const frame = document.getElementById("accident-frame");
 const canvas = document.getElementById("accident-canvas");
@@ -98,7 +97,8 @@ function loadDoc(url) {
     cacheDoc(url, cached); // 最近使った順の先頭へ
     return Promise.resolve(cached);
   }
-  const task = pdfjsLib.getDocument({ url, cMapUrl: "/pdfjs/cmaps/", cMapPacked: true });
+  const worker = pdfWorker();
+  const task = pdfjsLib.getDocument({ url, cMapUrl: "/pdfjs/cmaps/", cMapPacked: true, worker });
   loadTask = task;
   loadedBytes = 0;
   task.onProgress = p => {
@@ -108,7 +108,7 @@ function loadDoc(url) {
   const timeout = new Promise((_, reject) => {
     tid = setTimeout(() => reject(new Error("読み込みがタイムアウトしました")), LOAD_TIMEOUT_MS);
   });
-  return Promise.race([task.promise, timeout])
+  return Promise.race([task.promise, worker.failed, timeout])
     .then(d => {
       cacheDoc(url, d);
       return d;

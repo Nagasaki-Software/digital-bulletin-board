@@ -20,6 +20,18 @@ def test_pdfjs_and_accident_module_are_served(tmp_path):
     assert "accident.js" in c.get("/js/board.js").get_data(as_text=True)
 
 
+def test_every_pdf_load_uses_the_shared_worker(tmp_path):
+    # PDF.js に作業役を作らせると、pdf.worker.mjs の受け取りが1回失敗しただけで、
+    # 画面を開き直すまで PDF が表示できなくなる（Setting up fake worker failed）。必ず共有の作業役を渡す
+    c = create_app(tmp_path).test_client()
+    assert c.get("/js/pdfworker.js").status_code == 200
+    for path in ["/js/accident.js", "/js/documents.js", "/js/whiteboard.js"]:
+        js = c.get(path).get_data(as_text=True)
+        calls = js.count("pdfjsLib.getDocument(")
+        assert calls == 1 and js.count("worker })") == calls, path
+        assert "worker.failed" in js and "GlobalWorkerOptions" not in js, path
+
+
 def test_edit_button_default_is_wired_from_server_setting(tmp_path):
     c = create_app(tmp_path).test_client()
     board = c.get("/js/board.js").get_data(as_text=True)

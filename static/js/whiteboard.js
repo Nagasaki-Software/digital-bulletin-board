@@ -1,10 +1,10 @@
 import * as pdfjsLib from "/pdfjs/pdf.mjs";
+import { pdfWorker } from "./pdfworker.js";
 import { api } from "./api.js";
 import { pickOption, confirmBox, alertBox, inputPeriod } from "./picker.js";
 import { createStayTimer } from "./links.js";
 import { COLORS, WIDTHS, TEXT_SIZES, ERASER_SCALE, STAMPS, createHistory, normRect, arrowHead, thin, formatStamp, addDays, monthGroups, scheduleLayout, stampSize } from "./whiteboard-core.mjs";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.mjs";
 
 const $ = id => document.getElementById(id);
 const MAX_RATIO = 2; // 描画用の細かさ（画面の細かさの上限）
@@ -551,7 +551,8 @@ stage.addEventListener("pointercancel", e => endDrag(e, false));
 
 // ---- 背景のPDF ----
 async function loadPdf(url) {
-  const task = pdfjsLib.getDocument({ url, cMapUrl: "/pdfjs/cmaps/", cMapPacked: true });
+  const worker = pdfWorker();
+  const task = pdfjsLib.getDocument({ url, cMapUrl: "/pdfjs/cmaps/", cMapPacked: true, worker });
   let tid;
   const timeout = new Promise((_, reject) => {
     tid = setTimeout(() => {
@@ -560,7 +561,7 @@ async function loadPdf(url) {
     }, LOAD_TIMEOUT_MS);
   });
   try {
-    return await Promise.race([task.promise, timeout]);
+    return await Promise.race([task.promise, worker.failed, timeout]);
   } finally {
     clearTimeout(tid);
   }

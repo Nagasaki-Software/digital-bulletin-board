@@ -23,6 +23,13 @@ def test_no_text_file_has_crlf_line_endings():
     assert found == []  # * -text のため、CRLF のまま保存すると差分が全行になる。LF にそろえる
 
 
+def test_no_text_file_has_stray_control_characters():
+    # 「logs\app.log」を書き換えたとき、\a が目に見えない制御文字（ベル）になって説明書に入ったことがある
+    import re
+    found = [str(rel) for rel, p in text_files() if re.search(rb"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", p.read_bytes())]
+    assert found == []
+
+
 def test_the_two_bat_files_keep_crlf():
     for name in CRLF_FILES:
         raw = (ROOT / name).read_bytes()
